@@ -1,0 +1,19 @@
+{
+  "name": "Lab Tools",
+  "short_name": "Lab Tools",
+  "description": "Bath temperature calibration and countdown timer for lab rigs",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0d0d0d",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
