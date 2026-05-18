@@ -321,30 +321,66 @@ const SVG_PLAY='<svg viewBox="0 0 24 24" width="13" height="13" fill="currentCol
 const SVG_STOP='<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
 const STORAGE_KEY='labTools_v4';
 
-/* ── Auto-start all rows on load ── */
-function autoStartAll() {
-  const sheet = sheetsData[currentSheetIdx];
-  sheet.rows.forEach(row => {
-    if (!row.startDateStr || !row.durationStr) return;
-    const dms = parseDuration(row.durationStr);
-    if (isNaN(dms) || dms === 0) return;
-    const tMs = localStrToTargetMs(row.startDateStr, dms);
-    row.targetMs = tMs;
-    const finEl = document.getElementById('fin_' + row.id);
-    const calBtn = document.getElementById('calbtn_' + row.id);
-    const cdEl  = document.getElementById('cd_' + row.id);
-    const btn   = document.getElementById('playbtn_' + row.id);
-    if (finEl) { finEl.textContent = 'Finish: ' + formatFinish(tMs); finEl.className = 'finish-time set'; }
-    if (calBtn) calBtn.style.display = '';
-    if (tMs <= realUtcMs()) {
-      if (cdEl) { cdEl.textContent = '⏰ 00:00:00'; cdEl.className = 'cd-display done'; }
+/* ── Sequential auto-start: top→down, only first non-finished row ── */
+function autoStartSequential(){
+  stopAllTimers();
+  const sheet=sheetsData[currentSheetIdx];
+  let foundActive=false;
+  sheet.rows.forEach(row=>{
+    if(!row.startDateStr||!row.durationStr) return;
+    const dms=parseDuration(row.durationStr);
+    if(isNaN(dms)||dms===0) return;
+    const tMs=localStrToTargetMs(row.startDateStr,dms);
+    row.targetMs=tMs;
+    const finEl=document.getElementById('fin_'+row.id);
+    const calBtn=document.getElementById('calbtn_'+row.id);
+    const cdEl=document.getElementById('cd_'+row.id);
+    const btn=document.getElementById('playbtn_'+row.id);
+    if(finEl){finEl.textContent='Finish: '+formatFinish(tMs);finEl.className='finish-time set';}
+    if(calBtn)calBtn.style.display='';
+    if(foundActive) return; // rows below active: leave at --:--:--
+    if(tMs<=realUtcMs()){
+      // done
+      if(cdEl){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';}
     } else {
-      if (rowTimers[row.id]) clearInterval(rowTimers[row.id]);
-      rowTimers[row.id] = setInterval(() => tickRow(row.id), 1000);
+      // first active row
+      foundActive=true;
+      rowTimers[row.id]=setInterval(()=>tickRow(row.id),1000);
       tickRow(row.id);
-      if (btn) { btn.innerHTML = SVG_STOP; btn.classList.add('running'); }
+      if(btn){btn.innerHTML=SVG_STOP;btn.classList.add('running');}
     }
   });
+}
+
+/* ── Chain: when active row finishes, start the next one ── */
+function startNextInSequence(finishedRowId){
+  const sheet=sheetsData[currentSheetIdx];
+  const fi=sheet.rows.findIndex(r=>r.id===finishedRowId);
+  if(fi===-1) return;
+  for(let i=fi+1;i<sheet.rows.length;i++){
+    const row=sheet.rows[i];
+    if(!row.startDateStr||!row.durationStr) continue;
+    const dms=parseDuration(row.durationStr);
+    if(isNaN(dms)||dms===0) continue;
+    const tMs=localStrToTargetMs(row.startDateStr,dms);
+    row.targetMs=tMs;
+    const finEl=document.getElementById('fin_'+row.id);
+    const calBtn=document.getElementById('calbtn_'+row.id);
+    const cdEl=document.getElementById('cd_'+row.id);
+    const btn=document.getElementById('playbtn_'+row.id);
+    if(finEl){finEl.textContent='Finish: '+formatFinish(tMs);finEl.className='finish-time set';}
+    if(calBtn)calBtn.style.display='';
+    if(tMs<=realUtcMs()){
+      if(cdEl){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';}
+      continue; // skip finished, try next
+    }
+    // start this row
+    if(rowTimers[row.id])clearInterval(rowTimers[row.id]);
+    rowTimers[row.id]=setInterval(()=>tickRow(row.id),1000);
+    tickRow(row.id);
+    if(btn){btn.innerHTML=SVG_STOP;btn.classList.add('running');}
+    return;
+  }
 }
 
 /* ── Power toggle (shutdown / wake) ── */
@@ -645,7 +681,7 @@ function tickRow(rowId){
   const cdEl=document.getElementById('cd_'+rowId);
   if(!row||!row.targetMs||!cdEl) return;
   const diff=row.targetMs-realUtcMs();
-  if(diff<=0){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';doAlarm(rowId);stopRowTimer(rowId);return;}
+  if(diff<=0){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';doAlarm(rowId);stopRowTimer(rowId);startNextInSequence(rowId);return;}
   const ts=Math.floor(diff/1000);
   cdEl.textContent=pad(Math.floor(ts/3600))+':'+pad(Math.floor((ts%3600)/60))+':'+pad(ts%60);
   cdEl.className='cd-display ticking';
@@ -901,7 +937,7 @@ function switchSheet(idx){
   saveCurrentSheetMeta();currentSheetIdx=idx;
   document.getElementById('rigNumber').value=sheetsData[idx].rigNumber;
   renderTable();updateSheetTabs();
-  setTimeout(autoStartAll,100);
+  setTimeout(autoStartSequential,100);
   saveToStorage();
 }
 function addSheet(){
@@ -937,7 +973,7 @@ const restored=loadFromStorage();
 document.getElementById('rigNumber').value=sheetsData[currentSheetIdx].rigNumber;
 renderTable();updateSheetTabs();
 if(!restored){for(let i=0;i<3;i++)addDataRow();}
-else { setTimeout(autoStartAll, 100); }
+else { setTimeout(autoStartSequential, 100); }
 syncTime();setInterval(syncTime,300000);
 
 // ── PWA Service Worker ──
