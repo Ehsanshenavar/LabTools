@@ -63,8 +63,8 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
 
 /* ── Main ── */
 .main { flex: 1; padding: 16px 14px 14px; }
-.offset-box { background: #1e1e1e; border: 1px dashed #2e2e2e; border-radius: 8px; padding: 9px 14px; margin-bottom: 14px; text-align: center; font-size: 0.84rem; color: #555; transition: all 0.3s; }
-.offset-box.active { border-color: #3db843; color: #3db843; background: #0a1a0a; border-style: solid; }
+.offset-box { background: #22223a; border: 1px dashed #35355a; border-radius: 8px; padding: 9px 14px; margin-bottom: 14px; text-align: center; font-size: 0.84rem; color: #6060a0; transition: all 0.3s; }
+.offset-box.active { border-color: #3db843; color: #5dd865; background: #0e2a0e; border-style: solid; }
 
 /* ── Table (desktop) ── */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -145,6 +145,9 @@ tr.ramp-row:hover td { background: #1a1a38; }
 .sheet-tab-del { background: none; border: none; color: #555; font-size: 0.85rem; cursor: pointer; padding: 0 2px; line-height: 1; }
 .sheet-tab-del:hover { color: #e03535; }
 .sheet-tab.active .sheet-tab-del { color: #8a6a00; }
+.sheet-tab-dup { background: none; border: none; color: #4a4a8a; font-size: 0.82rem; cursor: pointer; padding: 0 2px; line-height: 1; transition: color 0.15s; }
+.sheet-tab-dup:hover { color: #a0a0f8; }
+.ramp-bath-lbl { font-size: 0.68rem; color: #5dd865; text-align: center; margin-top: 3px; min-height: 14px; }
 .sheet-add-btn { background: none; border: 1px solid #2a2a42; border-radius: 5px; color: #555; font-size: 1rem; width: 26px; height: 26px; margin-bottom: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-left: 4px; flex-shrink: 0; }
 .sheet-add-btn:hover { color: #f5a623; border-color: #f5a623; }
 
@@ -537,6 +540,18 @@ function parseDuration(str){
   return(Math.abs(h)*3600+m*60+s)*1000;
 }
 function msToDur(ms){const t=Math.round(Math.abs(ms)/1000);return pad(Math.floor(t/3600))+':'+pad(Math.floor((t%3600)/60))+':'+pad(t%60);}
+
+/* Auto-format duration input: type digits only, colons inserted automatically */
+function attachDurFormatter(el, onChange) {
+  el.addEventListener('input', () => {
+    const pos = el.selectionStart;
+    const digits = el.value.replace(/\D/g,'').slice(0,6);
+    if (!digits) { el.value=''; if(onChange) onChange(''); return; }
+    const p = digits.padStart(6,'0');
+    el.value = p.slice(0,2)+':'+p.slice(2,4)+':'+p.slice(4,6);
+    if(onChange) onChange(el.value);
+  });
+}
 function calcRate(st,et,durStr){
   const a=parseFloat(st),b=parseFloat(et),dms=parseDuration(durStr);
   if(isNaN(a)||isNaN(b)||isNaN(dms)||dms===0) return '';
@@ -630,9 +645,23 @@ function recalcBathOffset(){
   }else{bathCalcOffset=null;box.className='offset-box';box.textContent='Waiting for reference row input...';}
   recalcAllBath();
 }
+function recalcRampBath(row){
+  const sb=document.getElementById('sbath_'+row.id);
+  const eb=document.getElementById('ebath_'+row.id);
+  if(!sb&&!eb) return;
+  if(bathCalcOffset!==null){
+    const st=parseFloat(row.startTemp),et=parseFloat(row.endTemp);
+    if(sb) sb.textContent=!isNaN(st)?'Bath '+(st+bathCalcOffset).toFixed(2)+'°C':'—';
+    if(eb) eb.textContent=!isNaN(et)?'Bath '+(et+bathCalcOffset).toFixed(2)+'°C':'—';
+  }else{
+    if(sb) sb.textContent='—';
+    if(eb) eb.textContent='—';
+  }
+}
+
 function recalcAllBath(){
   sheetsData[currentSheetIdx].rows.forEach(row=>{
-    if(row.type==='ramp') return;
+    if(row.type==='ramp'){recalcRampBath(row);return;}
     const cell=document.getElementById('bath_'+row.id);if(!cell)return;
     const ind=parseFloat(row.indVal);
     if(bathCalcOffset!==null&&!isNaN(ind)){cell.textContent=(ind+bathCalcOffset).toFixed(2);cell.className='calc-value';}
@@ -810,7 +839,8 @@ function renderDataRow(row){
   line1.appendChild(startIn);
   const durIn=document.createElement('input');
   durIn.type='text';durIn.className='dur-input';durIn.id='dur_'+row.id;durIn.placeholder='hh:mm:ss';durIn.value=row.durationStr||'';
-  durIn.addEventListener('change',()=>{row.durationStr=durIn.value;saveToStorage();});
+  attachDurFormatter(durIn, v=>{ row.durationStr=v; saveToStorage(); });
+  durIn.addEventListener('change',()=>{ row.durationStr=durIn.value; saveToStorage(); });
   line1.appendChild(durIn);
   const playBtn=document.createElement('button');
   playBtn.className='btn-play';playBtn.id='playbtn_'+row.id;playBtn.innerHTML=SVG_PLAY;
@@ -843,16 +873,22 @@ function renderRampRow(row){
   const sLbl=document.createElement('span');sLbl.className='temp-lbl tl-s';sLbl.textContent='Start °C';
   const sTIn=document.createElement('input');
   sTIn.type='number';sTIn.step='any';sTIn.className='temp-input';sTIn.id='st_'+row.id;sTIn.placeholder='0.00';sTIn.value=row.startTemp||'';
-  sTIn.addEventListener('input',()=>{row.startTemp=sTIn.value;updateRampDerived(row);saveToStorage();});
-  sDiv.appendChild(sLbl);sDiv.appendChild(sTIn);tdS.appendChild(sDiv);tr.appendChild(tdS);
+  sTIn.addEventListener('input',()=>{row.startTemp=sTIn.value;updateRampDerived(row);recalcRampBath(row);saveToStorage();});
+  sDiv.appendChild(sLbl);sDiv.appendChild(sTIn);
+  const sBathLbl=document.createElement('div');sBathLbl.className='ramp-bath-lbl';sBathLbl.id='sbath_'+row.id;sBathLbl.textContent='—';
+  sDiv.appendChild(sBathLbl);
+  tdS.appendChild(sDiv);tr.appendChild(tdS);
 
   const tdE=document.createElement('td');tdE.className='td-b';
   const eDiv=document.createElement('div');eDiv.className='temp-cell';
   const eLbl=document.createElement('span');eLbl.className='temp-lbl tl-e';eLbl.textContent='End °C';
   const eTIn=document.createElement('input');
   eTIn.type='number';eTIn.step='any';eTIn.className='temp-input';eTIn.id='et_'+row.id;eTIn.placeholder='0.00';eTIn.value=row.endTemp||'';
-  eTIn.addEventListener('input',()=>{row.endTemp=eTIn.value;updateRampDerived(row);saveToStorage();});
-  eDiv.appendChild(eLbl);eDiv.appendChild(eTIn);tdE.appendChild(eDiv);tr.appendChild(tdE);
+  eTIn.addEventListener('input',()=>{row.endTemp=eTIn.value;updateRampDerived(row);recalcRampBath(row);saveToStorage();});
+  eDiv.appendChild(eLbl);eDiv.appendChild(eTIn);
+  const eBathLbl=document.createElement('div');eBathLbl.className='ramp-bath-lbl';eBathLbl.id='ebath_'+row.id;eBathLbl.textContent='—';
+  eDiv.appendChild(eBathLbl);
+  tdE.appendChild(eDiv);tr.appendChild(tdE);
 
   const tdSC=document.createElement('td');tdSC.className='td-sc sc-cell';
   // Line 1: datetime + play
@@ -870,6 +906,12 @@ function renderRampRow(row){
   const l2=document.createElement('div');l2.className='sc-line';
   const durIn=document.createElement('input');
   durIn.type='text';durIn.className='dur-input';durIn.id='dur_'+row.id;durIn.placeholder='hh:mm:ss';durIn.value=row.durationStr||'';
+  attachDurFormatter(durIn, v=>{
+    row.durationStr=v; row.lastEdited='dur';
+    const r=calcRate(row.startTemp,row.endTemp,v);
+    const rEl=document.getElementById('rate_'+row.id);if(rEl&&r!==''){rEl.value=r;row.rateStr=r;}
+    saveToStorage();
+  });
   durIn.addEventListener('change',()=>{
     row.durationStr=durIn.value;row.lastEdited='dur';
     const r=calcRate(row.startTemp,row.endTemp,durIn.value);
@@ -954,11 +996,24 @@ function deleteSheet(idx){
   document.getElementById('rigNumber').value=sheetsData[currentSheetIdx].rigNumber;
   renderTable();updateSheetTabs();saveToStorage();
 }
+function duplicateSheet(idx){
+  saveCurrentSheetMeta();
+  const copy=JSON.parse(JSON.stringify(sheetsData[idx]));
+  copy.name=sheetsData[idx].name+' ②';
+  copy.rows.forEach(r=>{r.id=++rowIdCounter;r.targetMs=null;});
+  sheetsData.push(copy);
+  currentSheetIdx=sheetsData.length-1;
+  document.getElementById('rigNumber').value=copy.rigNumber;
+  renderTable();updateSheetTabs();saveToStorage();
+}
+
 function updateSheetTabs(){
   const bar=document.getElementById('sheetBar');bar.innerHTML='';
   sheetsData.forEach((sheet,idx)=>{
     const tab=document.createElement('div');tab.className='sheet-tab'+(idx===currentSheetIdx?' active':'');
     const nm=document.createElement('span');nm.className='sheet-tab-name';nm.textContent=sheet.name;nm.onclick=()=>switchSheet(idx);tab.appendChild(nm);
+    const dupBtn=document.createElement('button');dupBtn.className='sheet-tab-dup';dupBtn.title='Duplicate sheet';dupBtn.textContent='⧉';
+    dupBtn.onclick=e=>{e.stopPropagation();duplicateSheet(idx);};tab.appendChild(dupBtn);
     if(sheetsData.length>1){
       const d=document.createElement('button');d.className='sheet-tab-del';d.title='Delete';d.textContent='×';
       d.onclick=e=>{e.stopPropagation();if(confirm('Delete '+sheet.name+'?'))deleteSheet(idx);};tab.appendChild(d);
