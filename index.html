@@ -32,6 +32,29 @@ body { font-family: Arial, sans-serif; background: #181824; color: #dde1f0; min-
 .btn-power:hover { box-shadow: 0 0 12px rgba(93,216,101,0.4); transform: scale(1.05); }
 .btn-power.off { border-color: #4a1a1a; background: #1a0a0a; color: #f87171; box-shadow: none; }
 .btn-power.off:hover { box-shadow: 0 0 12px rgba(248,113,113,0.4); }
+
+/* Stirrer toggle */
+.stirrer-wrap { display: flex; align-items: center; gap: 6px; margin-top: 5px; padding-top: 4px; border-top: 1px solid #25254a; }
+.stirrer-lbl  { font-size: 0.65rem; color: #5a5a8a; letter-spacing: 0.06em; text-transform: uppercase; }
+.stirrer-state { font-size: 0.7rem; font-weight: bold; min-width: 24px; }
+.stirrer-state.on  { color: #5dd865; }
+.stirrer-state.off { color: #4a4a6a; }
+.toggle-sw { position: relative; width: 36px; height: 20px; flex-shrink: 0; cursor: pointer; }
+.toggle-sw input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-track { position: absolute; inset: 0; background: #1e1e3a; border: 1px solid #35355a; border-radius: 20px; transition: all 0.22s; }
+.toggle-thumb { position: absolute; width: 14px; height: 14px; top: 2px; left: 2px; background: #5a5a8a; border-radius: 50%; transition: all 0.22s; }
+.toggle-sw input:checked ~ .toggle-track { background: #1a3a1a; border-color: #3db843; }
+.toggle-sw input:checked ~ .toggle-thumb { left: 18px; background: #5dd865; box-shadow: 0 0 6px rgba(93,216,101,0.5); }
+
+/* Stirrer-on row tint */
+tr.data-row.stirrer-on td { background: #141f14 !important; }
+tr.data-row.stirrer-on:hover td { background: #182418 !important; }
+tr.ramp-row.stirrer-on td  { background: #101828 !important; }
+tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
+@media (max-width:620px) {
+  tr.data-row.stirrer-on { background: #141f14 !important; }
+  tr.ramp-row.stirrer-on { background: #101828 !important; }
+}
 #shutdownOverlay { display: none; position: fixed; inset: 0; z-index: 999; background: #03030a; flex-direction: column; align-items: center; justify-content: center; gap: 20px; cursor: pointer; }
 #shutdownOverlay.active { display: flex; }
 #shutdownClock { font-size: 3.5rem; font-weight: bold; color: #2a2a5a; font-family: 'Courier New', monospace; letter-spacing: 6px; }
@@ -298,30 +321,66 @@ const SVG_PLAY='<svg viewBox="0 0 24 24" width="13" height="13" fill="currentCol
 const SVG_STOP='<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
 const STORAGE_KEY='labTools_v4';
 
-/* ── Auto-start all rows on load ── */
-function autoStartAll() {
-  const sheet = sheetsData[currentSheetIdx];
-  sheet.rows.forEach(row => {
-    if (!row.startDateStr || !row.durationStr) return;
-    const dms = parseDuration(row.durationStr);
-    if (isNaN(dms) || dms === 0) return;
-    const tMs = localStrToTargetMs(row.startDateStr, dms);
-    row.targetMs = tMs;
-    const finEl = document.getElementById('fin_' + row.id);
-    const calBtn = document.getElementById('calbtn_' + row.id);
-    const cdEl  = document.getElementById('cd_' + row.id);
-    const btn   = document.getElementById('playbtn_' + row.id);
-    if (finEl) { finEl.textContent = 'Finish: ' + formatFinish(tMs); finEl.className = 'finish-time set'; }
-    if (calBtn) calBtn.style.display = '';
-    if (tMs <= realUtcMs()) {
-      if (cdEl) { cdEl.textContent = '⏰ 00:00:00'; cdEl.className = 'cd-display done'; }
+/* ── Sequential auto-start: top→down, only first non-finished row ── */
+function autoStartSequential(){
+  stopAllTimers();
+  const sheet=sheetsData[currentSheetIdx];
+  let foundActive=false;
+  sheet.rows.forEach(row=>{
+    if(!row.startDateStr||!row.durationStr) return;
+    const dms=parseDuration(row.durationStr);
+    if(isNaN(dms)||dms===0) return;
+    const tMs=localStrToTargetMs(row.startDateStr,dms);
+    row.targetMs=tMs;
+    const finEl=document.getElementById('fin_'+row.id);
+    const calBtn=document.getElementById('calbtn_'+row.id);
+    const cdEl=document.getElementById('cd_'+row.id);
+    const btn=document.getElementById('playbtn_'+row.id);
+    if(finEl){finEl.textContent='Finish: '+formatFinish(tMs);finEl.className='finish-time set';}
+    if(calBtn)calBtn.style.display='';
+    if(foundActive) return; // rows below active: leave at --:--:--
+    if(tMs<=realUtcMs()){
+      // done
+      if(cdEl){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';}
     } else {
-      if (rowTimers[row.id]) clearInterval(rowTimers[row.id]);
-      rowTimers[row.id] = setInterval(() => tickRow(row.id), 1000);
+      // first active row
+      foundActive=true;
+      rowTimers[row.id]=setInterval(()=>tickRow(row.id),1000);
       tickRow(row.id);
-      if (btn) { btn.innerHTML = SVG_STOP; btn.classList.add('running'); }
+      if(btn){btn.innerHTML=SVG_STOP;btn.classList.add('running');}
     }
   });
+}
+
+/* ── Chain: when active row finishes, start the next one ── */
+function startNextInSequence(finishedRowId){
+  const sheet=sheetsData[currentSheetIdx];
+  const fi=sheet.rows.findIndex(r=>r.id===finishedRowId);
+  if(fi===-1) return;
+  for(let i=fi+1;i<sheet.rows.length;i++){
+    const row=sheet.rows[i];
+    if(!row.startDateStr||!row.durationStr) continue;
+    const dms=parseDuration(row.durationStr);
+    if(isNaN(dms)||dms===0) continue;
+    const tMs=localStrToTargetMs(row.startDateStr,dms);
+    row.targetMs=tMs;
+    const finEl=document.getElementById('fin_'+row.id);
+    const calBtn=document.getElementById('calbtn_'+row.id);
+    const cdEl=document.getElementById('cd_'+row.id);
+    const btn=document.getElementById('playbtn_'+row.id);
+    if(finEl){finEl.textContent='Finish: '+formatFinish(tMs);finEl.className='finish-time set';}
+    if(calBtn)calBtn.style.display='';
+    if(tMs<=realUtcMs()){
+      if(cdEl){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';}
+      continue; // skip finished, try next
+    }
+    // start this row
+    if(rowTimers[row.id])clearInterval(rowTimers[row.id]);
+    rowTimers[row.id]=setInterval(()=>tickRow(row.id),1000);
+    tickRow(row.id);
+    if(btn){btn.innerHTML=SVG_STOP;btn.classList.add('running');}
+    return;
+  }
 }
 
 /* ── Power toggle (shutdown / wake) ── */
@@ -400,9 +459,10 @@ function downloadICS(rowId){
   const idx=sheet.rows.indexOf(row)+1;
   const lbl=row.type==='ramp'?'Ramp ':'Row ';
   const summary=sheet.name+' — '+lbl+idx+' Finish';
+  const finishStr=formatFinish(row.targetMs);
   const desc=row.type==='ramp'
-    ?'Ramp from '+(row.startTemp||'?')+'°C to '+(row.endTemp||'?')+'°C\\nDuration: '+(row.durationStr||'?')+' | Rate: '+(row.rateStr||'?')+' °C/h'
-    :'Indicator: '+(row.indVal||'?')+'°C | Duration: '+(row.durationStr||'?');
+    ?'Finishing: '+finishStr+'\\nRamp from '+(row.startTemp||'?')+'°C to '+(row.endTemp||'?')+'°C\\nDuration: '+(row.durationStr||'?')+' | Rate: '+(row.rateStr||'?')+' °C/h\\nStirrer: '+(row.stirrer?'ON':'OFF')
+    :'Finishing: '+finishStr+'\\nIndicator: '+(row.indVal||'?')+'°C | Duration: '+(row.durationStr||'?')+'\\nStirrer: '+(row.stirrer?'ON':'OFF');
   function icsDate(ms){const d=new Date(ms);return d.getUTCFullYear()+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+'T'+pad(d.getUTCHours())+pad(d.getUTCMinutes())+pad(d.getUTCSeconds())+'Z';}
   const ics=[
     'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Lab Tools//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH',
@@ -419,10 +479,24 @@ function downloadICS(rowId){
   ].join('\r\n');
   const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;
-  a.download=(lbl+idx+'_'+sheet.name).replace(/\s+/g,'_')+'.ics';
-  document.body.appendChild(a);a.click();
-  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
+  const fname=(lbl+idx+'_'+sheet.name).replace(/\s+/g,'_')+'.ics';
+  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
+  if(isIOS){
+    // iOS Safari: navigate to blob URL → system offers "Add to Calendar"
+    window.location.href=url;
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+  }else{
+    const a=document.createElement('a');
+    a.href=url;a.download=fname;
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    // Android: after short delay try to open (triggers calendar intent)
+    setTimeout(()=>{
+      const a2=document.createElement('a');
+      a2.href=url;a2.target='_blank';
+      document.body.appendChild(a2);a2.click();document.body.removeChild(a2);
+      setTimeout(()=>URL.revokeObjectURL(url),3000);
+    },800);
+  }
 }
 
 let serverOffset=0, manualTzOffset=null, bathCalcOffset=null, rowIdCounter=0;
@@ -607,7 +681,7 @@ function tickRow(rowId){
   const cdEl=document.getElementById('cd_'+rowId);
   if(!row||!row.targetMs||!cdEl) return;
   const diff=row.targetMs-realUtcMs();
-  if(diff<=0){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';doAlarm(rowId);stopRowTimer(rowId);return;}
+  if(diff<=0){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';doAlarm(rowId);stopRowTimer(rowId);startNextInSequence(rowId);return;}
   const ts=Math.floor(diff/1000);
   cdEl.textContent=pad(Math.floor(ts/3600))+':'+pad(Math.floor((ts%3600)/60))+':'+pad(ts%60);
   cdEl.className='cd-display ticking';
@@ -630,6 +704,30 @@ function updateRampDerived(row){
     const rate=calcRate(row.startTemp,row.endTemp,row.durationStr);
     if(rate!==''){const el=document.getElementById('rate_'+row.id);if(el)el.value=rate;row.rateStr=rate;}
   }
+}
+
+/* ── Stirrer toggle (shared) ── */
+function buildStirrerToggle(row){
+  const wrap=document.createElement('div');wrap.className='stirrer-wrap';
+  const lbl=document.createElement('span');lbl.className='stirrer-lbl';lbl.textContent='Stirrer';
+  const sw=document.createElement('label');sw.className='toggle-sw';sw.title='Stirrer on/off';
+  const inp=document.createElement('input');inp.type='checkbox';inp.id='stir_'+row.id;inp.checked=!!row.stirrer;
+  const track=document.createElement('span');track.className='toggle-track';
+  const thumb=document.createElement('span');thumb.className='toggle-thumb';
+  sw.appendChild(inp);sw.appendChild(track);sw.appendChild(thumb);
+  const state=document.createElement('span');state.id='stirstate_'+row.id;
+  state.className='stirrer-state '+(row.stirrer?'on':'off');
+  state.textContent=row.stirrer?'ON':'OFF';
+  inp.addEventListener('change',()=>{
+    row.stirrer=inp.checked;
+    const tr=document.getElementById('tr_'+row.id);
+    if(tr){if(row.stirrer)tr.classList.add('stirrer-on');else tr.classList.remove('stirrer-on');}
+    state.className='stirrer-state '+(row.stirrer?'on':'off');
+    state.textContent=row.stirrer?'ON':'OFF';
+    saveToStorage();
+  });
+  wrap.appendChild(lbl);wrap.appendChild(sw);wrap.appendChild(state);
+  return wrap;
 }
 
 /* ── Build SC bottom (shared) ── */
@@ -686,7 +784,8 @@ function renderRefRow(sheet){
 function renderDataRow(row){
   const tbody=document.getElementById('tbody'),sheet=sheetsData[currentSheetIdx];
   const idx=sheet.rows.indexOf(row)+1;
-  const tr=document.createElement('tr');tr.id='tr_'+row.id;tr.className='data-row';
+  const tr=document.createElement('tr');tr.id='tr_'+row.id;
+  tr.className='data-row'+(row.stirrer?' stirrer-on':'');
 
   const tdNum=document.createElement('td');tdNum.className='td-num row-num';tdNum.textContent=idx;tr.appendChild(tdNum);
 
@@ -719,6 +818,7 @@ function renderDataRow(row){
   line1.appendChild(playBtn);
   tdSC.appendChild(line1);
   tdSC.appendChild(buildScBottom(row));
+  tdSC.appendChild(buildStirrerToggle(row));
   tr.appendChild(tdSC);
 
   const tdDel=document.createElement('td');tdDel.className='td-del';
@@ -731,7 +831,8 @@ function renderDataRow(row){
 function renderRampRow(row){
   const tbody=document.getElementById('tbody'),sheet=sheetsData[currentSheetIdx];
   const idx=sheet.rows.indexOf(row)+1;
-  const tr=document.createElement('tr');tr.id='tr_'+row.id;tr.className='ramp-row';
+  const tr=document.createElement('tr');tr.id='tr_'+row.id;
+  tr.className='ramp-row'+(row.stirrer?' stirrer-on':'');
 
   const tdNum=document.createElement('td');tdNum.className='td-num';
   tdNum.innerHTML='<span class="ramp-badge">RAMP</span><div style="font-size:0.65rem;color:#3a3a5a;margin-top:2px">'+idx+'</div>';
@@ -788,6 +889,7 @@ function renderRampRow(row){
   l2.appendChild(durIn);l2.appendChild(arrw);l2.appendChild(rateIn);l2.appendChild(rLbl);
   tdSC.appendChild(l2);
   tdSC.appendChild(buildScBottom(row));
+  tdSC.appendChild(buildStirrerToggle(row));
   tr.appendChild(tdSC);
 
   const tdDel=document.createElement('td');tdDel.className='td-del';
@@ -809,13 +911,13 @@ function renumberRows(){
 
 function addDataRow(){
   const sheet=sheetsData[currentSheetIdx];
-  const row={id:++rowIdCounter,type:'data',indVal:'',startDateStr:'',durationStr:'',targetMs:null};
+  const row={id:++rowIdCounter,type:'data',indVal:'',startDateStr:'',durationStr:'',targetMs:null,stirrer:false};
   sheet.rows.push(row);renderDataRow(row);saveToStorage();
   setTimeout(()=>{const el=document.getElementById('ind_'+row.id);if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'nearest'});}},30);
 }
 function addRampRow(){
   const sheet=sheetsData[currentSheetIdx];
-  const row={id:++rowIdCounter,type:'ramp',startTemp:getLastTemp(),endTemp:'',startDateStr:'',durationStr:'',rateStr:'',lastEdited:'dur',targetMs:null};
+  const row={id:++rowIdCounter,type:'ramp',startTemp:getLastTemp(),endTemp:'',startDateStr:'',durationStr:'',rateStr:'',lastEdited:'dur',targetMs:null,stirrer:false};
   sheet.rows.push(row);renderRampRow(row);saveToStorage();
   setTimeout(()=>{const el=document.getElementById('st_'+row.id);if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'nearest'});}},30);
 }
@@ -834,7 +936,9 @@ function switchSheet(idx){
   if(idx===currentSheetIdx)return;
   saveCurrentSheetMeta();currentSheetIdx=idx;
   document.getElementById('rigNumber').value=sheetsData[idx].rigNumber;
-  renderTable();updateSheetTabs();saveToStorage();
+  renderTable();updateSheetTabs();
+  setTimeout(autoStartSequential,100);
+  saveToStorage();
 }
 function addSheet(){
   saveCurrentSheetMeta();
@@ -869,7 +973,7 @@ const restored=loadFromStorage();
 document.getElementById('rigNumber').value=sheetsData[currentSheetIdx].rigNumber;
 renderTable();updateSheetTabs();
 if(!restored){for(let i=0;i<3;i++)addDataRow();}
-else { setTimeout(autoStartAll, 100); }
+else { setTimeout(autoStartSequential, 100); }
 syncTime();setInterval(syncTime,300000);
 
 // ── PWA Service Worker ──
