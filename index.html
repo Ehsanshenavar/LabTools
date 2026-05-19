@@ -32,29 +32,6 @@ body { font-family: Arial, sans-serif; background: #181824; color: #dde1f0; min-
 .btn-power:hover { box-shadow: 0 0 12px rgba(93,216,101,0.4); transform: scale(1.05); }
 .btn-power.off { border-color: #4a1a1a; background: #1a0a0a; color: #f87171; box-shadow: none; }
 .btn-power.off:hover { box-shadow: 0 0 12px rgba(248,113,113,0.4); }
-
-/* Stirrer toggle */
-.stirrer-wrap { display: flex; align-items: center; gap: 6px; margin-top: 5px; padding-top: 4px; border-top: 1px solid #25254a; }
-.stirrer-lbl  { font-size: 0.65rem; color: #5a5a8a; letter-spacing: 0.06em; text-transform: uppercase; }
-.stirrer-state { font-size: 0.7rem; font-weight: bold; min-width: 24px; }
-.stirrer-state.on  { color: #5dd865; }
-.stirrer-state.off { color: #4a4a6a; }
-.toggle-sw { position: relative; width: 36px; height: 20px; flex-shrink: 0; cursor: pointer; }
-.toggle-sw input { opacity: 0; width: 0; height: 0; position: absolute; }
-.toggle-track { position: absolute; inset: 0; background: #1e1e3a; border: 1px solid #35355a; border-radius: 20px; transition: all 0.22s; }
-.toggle-thumb { position: absolute; width: 14px; height: 14px; top: 2px; left: 2px; background: #5a5a8a; border-radius: 50%; transition: all 0.22s; }
-.toggle-sw input:checked ~ .toggle-track { background: #1a3a1a; border-color: #3db843; }
-.toggle-sw input:checked ~ .toggle-thumb { left: 18px; background: #5dd865; box-shadow: 0 0 6px rgba(93,216,101,0.5); }
-
-/* Stirrer-on row tint */
-tr.data-row.stirrer-on td { background: #141f14 !important; }
-tr.data-row.stirrer-on:hover td { background: #182418 !important; }
-tr.ramp-row.stirrer-on td  { background: #101828 !important; }
-tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
-@media (max-width:620px) {
-  tr.data-row.stirrer-on { background: #141f14 !important; }
-  tr.ramp-row.stirrer-on { background: #101828 !important; }
-}
 #shutdownOverlay { display: none; position: fixed; inset: 0; z-index: 999; background: #03030a; flex-direction: column; align-items: center; justify-content: center; gap: 20px; cursor: pointer; }
 #shutdownOverlay.active { display: flex; }
 #shutdownClock { font-size: 3.5rem; font-weight: bold; color: #2a2a5a; font-family: 'Courier New', monospace; letter-spacing: 6px; }
@@ -63,8 +40,8 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
 
 /* ── Main ── */
 .main { flex: 1; padding: 16px 14px 14px; }
-.offset-box { background: #22223a; border: 1px dashed #35355a; border-radius: 8px; padding: 9px 14px; margin-bottom: 14px; text-align: center; font-size: 0.84rem; color: #6060a0; transition: all 0.3s; }
-.offset-box.active { border-color: #3db843; color: #5dd865; background: #0e2a0e; border-style: solid; }
+.offset-box { background: #1e1e1e; border: 1px dashed #2e2e2e; border-radius: 8px; padding: 9px 14px; margin-bottom: 14px; text-align: center; font-size: 0.84rem; color: #555; transition: all 0.3s; }
+.offset-box.active { border-color: #3db843; color: #3db843; background: #0a1a0a; border-style: solid; }
 
 /* ── Table (desktop) ── */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -145,9 +122,6 @@ tr.ramp-row:hover td { background: #1a1a38; }
 .sheet-tab-del { background: none; border: none; color: #555; font-size: 0.85rem; cursor: pointer; padding: 0 2px; line-height: 1; }
 .sheet-tab-del:hover { color: #e03535; }
 .sheet-tab.active .sheet-tab-del { color: #8a6a00; }
-.sheet-tab-dup { background: none; border: none; color: #4a4a8a; font-size: 0.82rem; cursor: pointer; padding: 0 2px; line-height: 1; transition: color 0.15s; }
-.sheet-tab-dup:hover { color: #a0a0f8; }
-.ramp-bath-lbl { font-size: 0.68rem; color: #5dd865; text-align: center; margin-top: 3px; min-height: 14px; }
 .sheet-add-btn { background: none; border: 1px solid #2a2a42; border-radius: 5px; color: #555; font-size: 1rem; width: 26px; height: 26px; margin-bottom: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-left: 4px; flex-shrink: 0; }
 .sheet-add-btn:hover { color: #f5a623; border-color: #f5a623; }
 
@@ -324,66 +298,30 @@ const SVG_PLAY='<svg viewBox="0 0 24 24" width="13" height="13" fill="currentCol
 const SVG_STOP='<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>';
 const STORAGE_KEY='labTools_v4';
 
-/* ── Sequential auto-start: top→down, only first non-finished row ── */
-function autoStartSequential(){
-  stopAllTimers();
-  const sheet=sheetsData[currentSheetIdx];
-  let foundActive=false;
-  sheet.rows.forEach(row=>{
-    if(!row.startDateStr||!row.durationStr) return;
-    const dms=parseDuration(row.durationStr);
-    if(isNaN(dms)||dms===0) return;
-    const tMs=localStrToTargetMs(row.startDateStr,dms);
-    row.targetMs=tMs;
-    const finEl=document.getElementById('fin_'+row.id);
-    const calBtn=document.getElementById('calbtn_'+row.id);
-    const cdEl=document.getElementById('cd_'+row.id);
-    const btn=document.getElementById('playbtn_'+row.id);
-    if(finEl){finEl.textContent='Finish: '+formatFinish(tMs);finEl.className='finish-time set';}
-    if(calBtn)calBtn.style.display='';
-    if(foundActive) return; // rows below active: leave at --:--:--
-    if(tMs<=realUtcMs()){
-      // done
-      if(cdEl){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';}
+/* ── Auto-start all rows on load ── */
+function autoStartAll() {
+  const sheet = sheetsData[currentSheetIdx];
+  sheet.rows.forEach(row => {
+    if (!row.startDateStr || !row.durationStr) return;
+    const dms = parseDuration(row.durationStr);
+    if (isNaN(dms) || dms === 0) return;
+    const tMs = localStrToTargetMs(row.startDateStr, dms);
+    row.targetMs = tMs;
+    const finEl = document.getElementById('fin_' + row.id);
+    const calBtn = document.getElementById('calbtn_' + row.id);
+    const cdEl  = document.getElementById('cd_' + row.id);
+    const btn   = document.getElementById('playbtn_' + row.id);
+    if (finEl) { finEl.textContent = 'Finish: ' + formatFinish(tMs); finEl.className = 'finish-time set'; }
+    if (calBtn) calBtn.style.display = '';
+    if (tMs <= realUtcMs()) {
+      if (cdEl) { cdEl.textContent = '⏰ 00:00:00'; cdEl.className = 'cd-display done'; }
     } else {
-      // first active row
-      foundActive=true;
-      rowTimers[row.id]=setInterval(()=>tickRow(row.id),1000);
+      if (rowTimers[row.id]) clearInterval(rowTimers[row.id]);
+      rowTimers[row.id] = setInterval(() => tickRow(row.id), 1000);
       tickRow(row.id);
-      if(btn){btn.innerHTML=SVG_STOP;btn.classList.add('running');}
+      if (btn) { btn.innerHTML = SVG_STOP; btn.classList.add('running'); }
     }
   });
-}
-
-/* ── Chain: when active row finishes, start the next one ── */
-function startNextInSequence(finishedRowId){
-  const sheet=sheetsData[currentSheetIdx];
-  const fi=sheet.rows.findIndex(r=>r.id===finishedRowId);
-  if(fi===-1) return;
-  for(let i=fi+1;i<sheet.rows.length;i++){
-    const row=sheet.rows[i];
-    if(!row.startDateStr||!row.durationStr) continue;
-    const dms=parseDuration(row.durationStr);
-    if(isNaN(dms)||dms===0) continue;
-    const tMs=localStrToTargetMs(row.startDateStr,dms);
-    row.targetMs=tMs;
-    const finEl=document.getElementById('fin_'+row.id);
-    const calBtn=document.getElementById('calbtn_'+row.id);
-    const cdEl=document.getElementById('cd_'+row.id);
-    const btn=document.getElementById('playbtn_'+row.id);
-    if(finEl){finEl.textContent='Finish: '+formatFinish(tMs);finEl.className='finish-time set';}
-    if(calBtn)calBtn.style.display='';
-    if(tMs<=realUtcMs()){
-      if(cdEl){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';}
-      continue; // skip finished, try next
-    }
-    // start this row
-    if(rowTimers[row.id])clearInterval(rowTimers[row.id]);
-    rowTimers[row.id]=setInterval(()=>tickRow(row.id),1000);
-    tickRow(row.id);
-    if(btn){btn.innerHTML=SVG_STOP;btn.classList.add('running');}
-    return;
-  }
 }
 
 /* ── Power toggle (shutdown / wake) ── */
@@ -462,10 +400,9 @@ function downloadICS(rowId){
   const idx=sheet.rows.indexOf(row)+1;
   const lbl=row.type==='ramp'?'Ramp ':'Row ';
   const summary=sheet.name+' — '+lbl+idx+' Finish';
-  const finishStr=formatFinish(row.targetMs);
   const desc=row.type==='ramp'
-    ?'Finishing: '+finishStr+'\\nRamp from '+(row.startTemp||'?')+'°C to '+(row.endTemp||'?')+'°C\\nDuration: '+(row.durationStr||'?')+' | Rate: '+(row.rateStr||'?')+' °C/h\\nStirrer: '+(row.stirrer?'ON':'OFF')
-    :'Finishing: '+finishStr+'\\nIndicator: '+(row.indVal||'?')+'°C | Duration: '+(row.durationStr||'?')+'\\nStirrer: '+(row.stirrer?'ON':'OFF');
+    ?'Ramp from '+(row.startTemp||'?')+'°C to '+(row.endTemp||'?')+'°C\\nDuration: '+(row.durationStr||'?')+' | Rate: '+(row.rateStr||'?')+' °C/h'
+    :'Indicator: '+(row.indVal||'?')+'°C | Duration: '+(row.durationStr||'?');
   function icsDate(ms){const d=new Date(ms);return d.getUTCFullYear()+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+'T'+pad(d.getUTCHours())+pad(d.getUTCMinutes())+pad(d.getUTCSeconds())+'Z';}
   const ics=[
     'BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Lab Tools//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH',
@@ -482,24 +419,10 @@ function downloadICS(rowId){
   ].join('\r\n');
   const blob=new Blob([ics],{type:'text/calendar;charset=utf-8'});
   const url=URL.createObjectURL(blob);
-  const fname=(lbl+idx+'_'+sheet.name).replace(/\s+/g,'_')+'.ics';
-  const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
-  if(isIOS){
-    // iOS Safari: navigate to blob URL → system offers "Add to Calendar"
-    window.location.href=url;
-    setTimeout(()=>URL.revokeObjectURL(url),5000);
-  }else{
-    const a=document.createElement('a');
-    a.href=url;a.download=fname;
-    document.body.appendChild(a);a.click();document.body.removeChild(a);
-    // Android: after short delay try to open (triggers calendar intent)
-    setTimeout(()=>{
-      const a2=document.createElement('a');
-      a2.href=url;a2.target='_blank';
-      document.body.appendChild(a2);a2.click();document.body.removeChild(a2);
-      setTimeout(()=>URL.revokeObjectURL(url),3000);
-    },800);
-  }
+  const a=document.createElement('a');a.href=url;
+  a.download=(lbl+idx+'_'+sheet.name).replace(/\s+/g,'_')+'.ics';
+  document.body.appendChild(a);a.click();
+  setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
 }
 
 let serverOffset=0, manualTzOffset=null, bathCalcOffset=null, rowIdCounter=0;
@@ -540,18 +463,6 @@ function parseDuration(str){
   return(Math.abs(h)*3600+m*60+s)*1000;
 }
 function msToDur(ms){const t=Math.round(Math.abs(ms)/1000);return pad(Math.floor(t/3600))+':'+pad(Math.floor((t%3600)/60))+':'+pad(t%60);}
-
-/* Auto-format duration input: type digits only, colons inserted automatically */
-function attachDurFormatter(el, onChange) {
-  el.addEventListener('input', () => {
-    const pos = el.selectionStart;
-    const digits = el.value.replace(/\D/g,'').slice(0,6);
-    if (!digits) { el.value=''; if(onChange) onChange(''); return; }
-    const p = digits.padStart(6,'0');
-    el.value = p.slice(0,2)+':'+p.slice(2,4)+':'+p.slice(4,6);
-    if(onChange) onChange(el.value);
-  });
-}
 function calcRate(st,et,durStr){
   const a=parseFloat(st),b=parseFloat(et),dms=parseDuration(durStr);
   if(isNaN(a)||isNaN(b)||isNaN(dms)||dms===0) return '';
@@ -645,23 +556,9 @@ function recalcBathOffset(){
   }else{bathCalcOffset=null;box.className='offset-box';box.textContent='Waiting for reference row input...';}
   recalcAllBath();
 }
-function recalcRampBath(row){
-  const sb=document.getElementById('sbath_'+row.id);
-  const eb=document.getElementById('ebath_'+row.id);
-  if(!sb&&!eb) return;
-  if(bathCalcOffset!==null){
-    const st=parseFloat(row.startTemp),et=parseFloat(row.endTemp);
-    if(sb) sb.textContent=!isNaN(st)?'Bath '+(st+bathCalcOffset).toFixed(2)+'°C':'—';
-    if(eb) eb.textContent=!isNaN(et)?'Bath '+(et+bathCalcOffset).toFixed(2)+'°C':'—';
-  }else{
-    if(sb) sb.textContent='—';
-    if(eb) eb.textContent='—';
-  }
-}
-
 function recalcAllBath(){
   sheetsData[currentSheetIdx].rows.forEach(row=>{
-    if(row.type==='ramp'){recalcRampBath(row);return;}
+    if(row.type==='ramp') return;
     const cell=document.getElementById('bath_'+row.id);if(!cell)return;
     const ind=parseFloat(row.indVal);
     if(bathCalcOffset!==null&&!isNaN(ind)){cell.textContent=(ind+bathCalcOffset).toFixed(2);cell.className='calc-value';}
@@ -710,7 +607,7 @@ function tickRow(rowId){
   const cdEl=document.getElementById('cd_'+rowId);
   if(!row||!row.targetMs||!cdEl) return;
   const diff=row.targetMs-realUtcMs();
-  if(diff<=0){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';doAlarm(rowId);stopRowTimer(rowId);startNextInSequence(rowId);return;}
+  if(diff<=0){cdEl.textContent='⏰ 00:00:00';cdEl.className='cd-display done';doAlarm(rowId);stopRowTimer(rowId);return;}
   const ts=Math.floor(diff/1000);
   cdEl.textContent=pad(Math.floor(ts/3600))+':'+pad(Math.floor((ts%3600)/60))+':'+pad(ts%60);
   cdEl.className='cd-display ticking';
@@ -733,30 +630,6 @@ function updateRampDerived(row){
     const rate=calcRate(row.startTemp,row.endTemp,row.durationStr);
     if(rate!==''){const el=document.getElementById('rate_'+row.id);if(el)el.value=rate;row.rateStr=rate;}
   }
-}
-
-/* ── Stirrer toggle (shared) ── */
-function buildStirrerToggle(row){
-  const wrap=document.createElement('div');wrap.className='stirrer-wrap';
-  const lbl=document.createElement('span');lbl.className='stirrer-lbl';lbl.textContent='Stirrer';
-  const sw=document.createElement('label');sw.className='toggle-sw';sw.title='Stirrer on/off';
-  const inp=document.createElement('input');inp.type='checkbox';inp.id='stir_'+row.id;inp.checked=!!row.stirrer;
-  const track=document.createElement('span');track.className='toggle-track';
-  const thumb=document.createElement('span');thumb.className='toggle-thumb';
-  sw.appendChild(inp);sw.appendChild(track);sw.appendChild(thumb);
-  const state=document.createElement('span');state.id='stirstate_'+row.id;
-  state.className='stirrer-state '+(row.stirrer?'on':'off');
-  state.textContent=row.stirrer?'ON':'OFF';
-  inp.addEventListener('change',()=>{
-    row.stirrer=inp.checked;
-    const tr=document.getElementById('tr_'+row.id);
-    if(tr){if(row.stirrer)tr.classList.add('stirrer-on');else tr.classList.remove('stirrer-on');}
-    state.className='stirrer-state '+(row.stirrer?'on':'off');
-    state.textContent=row.stirrer?'ON':'OFF';
-    saveToStorage();
-  });
-  wrap.appendChild(lbl);wrap.appendChild(sw);wrap.appendChild(state);
-  return wrap;
 }
 
 /* ── Build SC bottom (shared) ── */
@@ -813,8 +686,7 @@ function renderRefRow(sheet){
 function renderDataRow(row){
   const tbody=document.getElementById('tbody'),sheet=sheetsData[currentSheetIdx];
   const idx=sheet.rows.indexOf(row)+1;
-  const tr=document.createElement('tr');tr.id='tr_'+row.id;
-  tr.className='data-row'+(row.stirrer?' stirrer-on':'');
+  const tr=document.createElement('tr');tr.id='tr_'+row.id;tr.className='data-row';
 
   const tdNum=document.createElement('td');tdNum.className='td-num row-num';tdNum.textContent=idx;tr.appendChild(tdNum);
 
@@ -839,8 +711,7 @@ function renderDataRow(row){
   line1.appendChild(startIn);
   const durIn=document.createElement('input');
   durIn.type='text';durIn.className='dur-input';durIn.id='dur_'+row.id;durIn.placeholder='hh:mm:ss';durIn.value=row.durationStr||'';
-  attachDurFormatter(durIn, v=>{ row.durationStr=v; saveToStorage(); });
-  durIn.addEventListener('change',()=>{ row.durationStr=durIn.value; saveToStorage(); });
+  durIn.addEventListener('change',()=>{row.durationStr=durIn.value;saveToStorage();});
   line1.appendChild(durIn);
   const playBtn=document.createElement('button');
   playBtn.className='btn-play';playBtn.id='playbtn_'+row.id;playBtn.innerHTML=SVG_PLAY;
@@ -848,7 +719,6 @@ function renderDataRow(row){
   line1.appendChild(playBtn);
   tdSC.appendChild(line1);
   tdSC.appendChild(buildScBottom(row));
-  tdSC.appendChild(buildStirrerToggle(row));
   tr.appendChild(tdSC);
 
   const tdDel=document.createElement('td');tdDel.className='td-del';
@@ -861,8 +731,7 @@ function renderDataRow(row){
 function renderRampRow(row){
   const tbody=document.getElementById('tbody'),sheet=sheetsData[currentSheetIdx];
   const idx=sheet.rows.indexOf(row)+1;
-  const tr=document.createElement('tr');tr.id='tr_'+row.id;
-  tr.className='ramp-row'+(row.stirrer?' stirrer-on':'');
+  const tr=document.createElement('tr');tr.id='tr_'+row.id;tr.className='ramp-row';
 
   const tdNum=document.createElement('td');tdNum.className='td-num';
   tdNum.innerHTML='<span class="ramp-badge">RAMP</span><div style="font-size:0.65rem;color:#3a3a5a;margin-top:2px">'+idx+'</div>';
@@ -873,22 +742,16 @@ function renderRampRow(row){
   const sLbl=document.createElement('span');sLbl.className='temp-lbl tl-s';sLbl.textContent='Start °C';
   const sTIn=document.createElement('input');
   sTIn.type='number';sTIn.step='any';sTIn.className='temp-input';sTIn.id='st_'+row.id;sTIn.placeholder='0.00';sTIn.value=row.startTemp||'';
-  sTIn.addEventListener('input',()=>{row.startTemp=sTIn.value;updateRampDerived(row);recalcRampBath(row);saveToStorage();});
-  sDiv.appendChild(sLbl);sDiv.appendChild(sTIn);
-  const sBathLbl=document.createElement('div');sBathLbl.className='ramp-bath-lbl';sBathLbl.id='sbath_'+row.id;sBathLbl.textContent='—';
-  sDiv.appendChild(sBathLbl);
-  tdS.appendChild(sDiv);tr.appendChild(tdS);
+  sTIn.addEventListener('input',()=>{row.startTemp=sTIn.value;updateRampDerived(row);saveToStorage();});
+  sDiv.appendChild(sLbl);sDiv.appendChild(sTIn);tdS.appendChild(sDiv);tr.appendChild(tdS);
 
   const tdE=document.createElement('td');tdE.className='td-b';
   const eDiv=document.createElement('div');eDiv.className='temp-cell';
   const eLbl=document.createElement('span');eLbl.className='temp-lbl tl-e';eLbl.textContent='End °C';
   const eTIn=document.createElement('input');
   eTIn.type='number';eTIn.step='any';eTIn.className='temp-input';eTIn.id='et_'+row.id;eTIn.placeholder='0.00';eTIn.value=row.endTemp||'';
-  eTIn.addEventListener('input',()=>{row.endTemp=eTIn.value;updateRampDerived(row);recalcRampBath(row);saveToStorage();});
-  eDiv.appendChild(eLbl);eDiv.appendChild(eTIn);
-  const eBathLbl=document.createElement('div');eBathLbl.className='ramp-bath-lbl';eBathLbl.id='ebath_'+row.id;eBathLbl.textContent='—';
-  eDiv.appendChild(eBathLbl);
-  tdE.appendChild(eDiv);tr.appendChild(tdE);
+  eTIn.addEventListener('input',()=>{row.endTemp=eTIn.value;updateRampDerived(row);saveToStorage();});
+  eDiv.appendChild(eLbl);eDiv.appendChild(eTIn);tdE.appendChild(eDiv);tr.appendChild(tdE);
 
   const tdSC=document.createElement('td');tdSC.className='td-sc sc-cell';
   // Line 1: datetime + play
@@ -906,12 +769,6 @@ function renderRampRow(row){
   const l2=document.createElement('div');l2.className='sc-line';
   const durIn=document.createElement('input');
   durIn.type='text';durIn.className='dur-input';durIn.id='dur_'+row.id;durIn.placeholder='hh:mm:ss';durIn.value=row.durationStr||'';
-  attachDurFormatter(durIn, v=>{
-    row.durationStr=v; row.lastEdited='dur';
-    const r=calcRate(row.startTemp,row.endTemp,v);
-    const rEl=document.getElementById('rate_'+row.id);if(rEl&&r!==''){rEl.value=r;row.rateStr=r;}
-    saveToStorage();
-  });
   durIn.addEventListener('change',()=>{
     row.durationStr=durIn.value;row.lastEdited='dur';
     const r=calcRate(row.startTemp,row.endTemp,durIn.value);
@@ -931,7 +788,6 @@ function renderRampRow(row){
   l2.appendChild(durIn);l2.appendChild(arrw);l2.appendChild(rateIn);l2.appendChild(rLbl);
   tdSC.appendChild(l2);
   tdSC.appendChild(buildScBottom(row));
-  tdSC.appendChild(buildStirrerToggle(row));
   tr.appendChild(tdSC);
 
   const tdDel=document.createElement('td');tdDel.className='td-del';
@@ -953,13 +809,13 @@ function renumberRows(){
 
 function addDataRow(){
   const sheet=sheetsData[currentSheetIdx];
-  const row={id:++rowIdCounter,type:'data',indVal:'',startDateStr:'',durationStr:'',targetMs:null,stirrer:false};
+  const row={id:++rowIdCounter,type:'data',indVal:'',startDateStr:'',durationStr:'',targetMs:null};
   sheet.rows.push(row);renderDataRow(row);saveToStorage();
   setTimeout(()=>{const el=document.getElementById('ind_'+row.id);if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'nearest'});}},30);
 }
 function addRampRow(){
   const sheet=sheetsData[currentSheetIdx];
-  const row={id:++rowIdCounter,type:'ramp',startTemp:getLastTemp(),endTemp:'',startDateStr:'',durationStr:'',rateStr:'',lastEdited:'dur',targetMs:null,stirrer:false};
+  const row={id:++rowIdCounter,type:'ramp',startTemp:getLastTemp(),endTemp:'',startDateStr:'',durationStr:'',rateStr:'',lastEdited:'dur',targetMs:null};
   sheet.rows.push(row);renderRampRow(row);saveToStorage();
   setTimeout(()=>{const el=document.getElementById('st_'+row.id);if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'nearest'});}},30);
 }
@@ -978,9 +834,7 @@ function switchSheet(idx){
   if(idx===currentSheetIdx)return;
   saveCurrentSheetMeta();currentSheetIdx=idx;
   document.getElementById('rigNumber').value=sheetsData[idx].rigNumber;
-  renderTable();updateSheetTabs();
-  setTimeout(autoStartSequential,100);
-  saveToStorage();
+  renderTable();updateSheetTabs();saveToStorage();
 }
 function addSheet(){
   saveCurrentSheetMeta();
@@ -996,24 +850,11 @@ function deleteSheet(idx){
   document.getElementById('rigNumber').value=sheetsData[currentSheetIdx].rigNumber;
   renderTable();updateSheetTabs();saveToStorage();
 }
-function duplicateSheet(idx){
-  saveCurrentSheetMeta();
-  const copy=JSON.parse(JSON.stringify(sheetsData[idx]));
-  copy.name=sheetsData[idx].name+' ②';
-  copy.rows.forEach(r=>{r.id=++rowIdCounter;r.targetMs=null;});
-  sheetsData.push(copy);
-  currentSheetIdx=sheetsData.length-1;
-  document.getElementById('rigNumber').value=copy.rigNumber;
-  renderTable();updateSheetTabs();saveToStorage();
-}
-
 function updateSheetTabs(){
   const bar=document.getElementById('sheetBar');bar.innerHTML='';
   sheetsData.forEach((sheet,idx)=>{
     const tab=document.createElement('div');tab.className='sheet-tab'+(idx===currentSheetIdx?' active':'');
     const nm=document.createElement('span');nm.className='sheet-tab-name';nm.textContent=sheet.name;nm.onclick=()=>switchSheet(idx);tab.appendChild(nm);
-    const dupBtn=document.createElement('button');dupBtn.className='sheet-tab-dup';dupBtn.title='Duplicate sheet';dupBtn.textContent='⧉';
-    dupBtn.onclick=e=>{e.stopPropagation();duplicateSheet(idx);};tab.appendChild(dupBtn);
     if(sheetsData.length>1){
       const d=document.createElement('button');d.className='sheet-tab-del';d.title='Delete';d.textContent='×';
       d.onclick=e=>{e.stopPropagation();if(confirm('Delete '+sheet.name+'?'))deleteSheet(idx);};tab.appendChild(d);
@@ -1028,7 +869,7 @@ const restored=loadFromStorage();
 document.getElementById('rigNumber').value=sheetsData[currentSheetIdx].rigNumber;
 renderTable();updateSheetTabs();
 if(!restored){for(let i=0;i<3;i++)addDataRow();}
-else { setTimeout(autoStartSequential, 100); }
+else { setTimeout(autoStartAll, 100); }
 syncTime();setInterval(syncTime,300000);
 
 // ── PWA Service Worker ──
