@@ -55,6 +55,11 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
 @media (max-width:620px) {
   tr.data-row.stirrer-on { background: #141f14 !important; }
   tr.ramp-row.stirrer-on { background: #101828 !important; }
+  .sheet-tab { padding: 10px 12px 10px 16px; font-size: 0.9rem; min-height: 40px; }
+  #sheetBar { min-height: 46px; }
+  .sheet-tab-del { font-size: 1rem; padding: 0 4px; }
+  .sheet-tab-dup { font-size: 0.95rem; }
+  .sheet-add-btn { width: 34px; height: 34px; font-size: 1.1rem; }
 }
 #shutdownOverlay { display: none; position: fixed; inset: 0; z-index: 999; background: #03030a; flex-direction: column; align-items: center; justify-content: center; gap: 20px; cursor: pointer; }
 /* ── Login overlay ── */
@@ -156,11 +161,16 @@ tr.ramp-row:hover td { background: #1a1a38; }
 .btn-cal:hover { opacity: 1; border-color: #3db843; }
 .notif-bar { font-size: 0.68rem; color: #333; margin-top: 3px; display: flex; align-items: center; gap: 5px; }
 .notif-bar.granted { color: #2a5a2a; }
-.btn-row-group { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-row-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .btn-add      { padding: 11px 18px; background: linear-gradient(135deg,#162016,#0f180f); color: #3db843; border: 1px solid #1e401e; border-radius: 8px; font-size: 0.9rem; font-weight: bold; cursor: pointer; touch-action: manipulation; }
 .btn-add-ramp { padding: 11px 18px; background: linear-gradient(135deg,#12102a,#0a0818); color: #a78bfa; border: 1px solid #2a2050; border-radius: 8px; font-size: 0.9rem; font-weight: bold; cursor: pointer; touch-action: manipulation; }
 .btn-add:hover { border-color: #3db843; }
 .btn-add-ramp:hover { border-color: #a78bfa; }
+.insert-wrap { display:flex; align-items:center; gap:6px; }
+.insert-lbl { font-size:0.78rem; color:#5a5a8a; white-space:nowrap; }
+.insert-inp { width:58px; padding:9px 6px; background:#1a1a30; border:1.5px solid #35355a; border-radius:7px; color:#a0a0f8; font-size:0.92rem; text-align:center; outline:none; -moz-appearance:textfield; }
+.insert-inp::-webkit-inner-spin-button,.insert-inp::-webkit-outer-spin-button{-webkit-appearance:none;}
+.insert-inp:focus{border-color:#a78bfa;}
 
 /* ── Sheet bar ── */
 #sheetBar { background: #12121e; border-top: 2px solid #2a2a40; display: flex; align-items: flex-end; padding: 0 12px; gap: 2px; min-height: 36px; position: sticky; bottom: 0; z-index: 50; overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -355,6 +365,10 @@ tr.ramp-row:hover td { background: #1a1a38; }
     </table>
   </div>
   <div class="btn-row-group">
+    <div class="insert-wrap">
+      <span class="insert-lbl">Insert at:</span>
+      <input type="number" id="insertPos" class="insert-inp" min="1" value="1">
+    </div>
     <button class="btn-add"      onclick="addDataRow()">+ Add Row</button>
     <button class="btn-add-ramp" onclick="addRampRow()">+ Add Ramp</button>
   </div>
@@ -870,6 +884,7 @@ function renderTable(){
   const sheet=sheetsData[currentSheetIdx];
   renderRefRow(sheet);
   sheet.rows.forEach(row=>row.type==='ramp'?renderRampRow(row):renderDataRow(row));
+  updateInsertPos();
 }
 
 function renderRefRow(sheet){
@@ -939,7 +954,7 @@ function renderDataRow(row){
 
   const tdDel=document.createElement('td');tdDel.className='td-del';
   const delBtn=document.createElement('button');delBtn.className='btn-del';delBtn.textContent='✕';
-  delBtn.onclick=()=>{stopRowTimer(row.id);sheet.rows=sheet.rows.filter(r=>r.id!==row.id);tbody.removeChild(tr);renumberRows();recalcAllBath();saveToStorage();};
+  delBtn.onclick=()=>{stopRowTimer(row.id);sheet.rows=sheet.rows.filter(r=>r.id!==row.id);rebuildTbody();updateInsertPos();saveToStorage();};
   tdDel.appendChild(delBtn);tr.appendChild(tdDel);
   tbody.appendChild(tr);
 }
@@ -1022,31 +1037,62 @@ function renderRampRow(row){
 
   const tdDel=document.createElement('td');tdDel.className='td-del';
   const delBtn=document.createElement('button');delBtn.className='btn-del';delBtn.textContent='✕';
-  delBtn.onclick=()=>{stopRowTimer(row.id);sheet.rows=sheet.rows.filter(r=>r.id!==row.id);tbody.removeChild(tr);renumberRows();saveToStorage();};
+  delBtn.onclick=()=>{stopRowTimer(row.id);sheet.rows=sheet.rows.filter(r=>r.id!==row.id);rebuildTbody();updateInsertPos();saveToStorage();};
   tdDel.appendChild(delBtn);tr.appendChild(tdDel);
   tbody.appendChild(tr);
 }
 
 function renumberRows(){
   sheetsData[currentSheetIdx].rows.forEach((row,idx)=>{
-    if(row.type==='ramp'){
-      const el=document.querySelector('#tr_'+row.id+' .td-num div');if(el)el.textContent=idx+1;
-    }else{
-      const el=document.querySelector('#tr_'+row.id+' .row-num');if(el)el.textContent=idx+1;
-    }
+    if(row.type==='ramp'){const el=document.querySelector('#tr_'+row.id+' .td-num div');if(el)el.textContent=idx+1;}
+    else{const el=document.querySelector('#tr_'+row.id+' .row-num');if(el)el.textContent=idx+1;}
   });
+}
+
+function rebuildTbody(){
+  const tbody=document.getElementById('tbody');
+  Array.from(tbody.querySelectorAll('tr:not(.ref-row)')).forEach(tr=>tr.remove());
+  sheetsData[currentSheetIdx].rows.forEach(row=>row.type==='ramp'?renderRampRow(row):renderDataRow(row));
+  recalcAllBath();
+}
+
+function updateInsertPos(){
+  const el=document.getElementById('insertPos');
+  if(el) el.value=sheetsData[currentSheetIdx].rows.length+1;
+}
+
+function getInsertIdx(){
+  const el=document.getElementById('insertPos');
+  const v=parseInt(el?.value)||1;
+  const len=sheetsData[currentSheetIdx].rows.length;
+  return Math.max(0,Math.min(v-1,len)); // 0-based index
 }
 
 function addDataRow(){
   const sheet=sheetsData[currentSheetIdx];
+  const idx=getInsertIdx();
   const row={id:++rowIdCounter,type:'data',indVal:'',startDateStr:'',durationStr:'',targetMs:null,stirrer:false};
-  sheet.rows.push(row);renderDataRow(row);saveToStorage();
+  sheet.rows.splice(idx,0,row);
+  rebuildTbody();
+  // Set next default to position after inserted row
+  const posEl=document.getElementById('insertPos');
+  if(posEl) posEl.value=idx+2;
+  saveToStorage();
   setTimeout(()=>{const el=document.getElementById('ind_'+row.id);if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'nearest'});}},30);
 }
+
 function addRampRow(){
   const sheet=sheetsData[currentSheetIdx];
-  const row={id:++rowIdCounter,type:'ramp',startTemp:getLastTemp(),endTemp:'',startDateStr:'',durationStr:'',rateStr:'',lastEdited:'dur',targetMs:null,stirrer:false};
-  sheet.rows.push(row);renderRampRow(row);saveToStorage();
+  const idx=getInsertIdx();
+  // Default start temp from row above insert position
+  let defStart='';
+  if(idx>0){const prev=sheet.rows[idx-1];defStart=prev.type==='ramp'?(prev.endTemp||''):(prev.indVal||'');}
+  const row={id:++rowIdCounter,type:'ramp',startTemp:defStart,endTemp:'',startDateStr:'',durationStr:'',rateStr:'',lastEdited:'dur',targetMs:null,stirrer:false};
+  sheet.rows.splice(idx,0,row);
+  rebuildTbody();
+  const posEl=document.getElementById('insertPos');
+  if(posEl) posEl.value=idx+2;
+  saveToStorage();
   setTimeout(()=>{const el=document.getElementById('st_'+row.id);if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'nearest'});}},30);
 }
 
