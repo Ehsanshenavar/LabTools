@@ -12,6 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Lab Tools">
 <link rel="apple-touch-icon" href="icon.svg">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Arial, sans-serif; background: #181824; color: #dde1f0; min-height: 100vh; display: flex; flex-direction: column; }
@@ -56,6 +57,30 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
   tr.ramp-row.stirrer-on { background: #101828 !important; }
 }
 #shutdownOverlay { display: none; position: fixed; inset: 0; z-index: 999; background: #03030a; flex-direction: column; align-items: center; justify-content: center; gap: 20px; cursor: pointer; }
+/* ── Login overlay ── */
+#loginOverlay { display:none; position:fixed; inset:0; z-index:1000; background:#0c0c18; flex-direction:column; align-items:center; justify-content:center; padding:20px; }
+#loginOverlay.show { display:flex; }
+#loginBox { background:#1e1e30; border:1px solid #2e2e4a; border-radius:16px; padding:32px 28px; width:100%; max-width:340px; text-align:center; }
+#loginBox h2 { color:#f5a623; font-size:1.3rem; margin-bottom:4px; }
+#loginBox .sub { color:#5a5a8a; font-size:0.8rem; margin-bottom:22px; }
+.login-inp { display:block; width:100%; padding:12px 14px; margin-bottom:12px; background:#141428; border:1.5px solid #35355a; border-radius:8px; color:#dde1f0; font-size:0.95rem; outline:none; }
+.login-inp:focus { border-color:#a78bfa; }
+.login-inp::placeholder { color:#44446a; }
+.btn-login { width:100%; padding:12px; background:linear-gradient(135deg,#3a2a6a,#2a1a5a); color:#c4b5fd; border:1px solid #5a4a9a; border-radius:8px; font-size:1rem; font-weight:bold; cursor:pointer; margin-bottom:10px; }
+.btn-login:hover { background:linear-gradient(135deg,#4a3a7a,#3a2a6a); }
+.btn-register { width:100%; padding:10px; background:none; color:#5a5a8a; border:1px solid #2e2e4a; border-radius:8px; font-size:0.88rem; cursor:pointer; }
+.btn-register:hover { color:#a0a0f8; border-color:#5a5a9a; }
+#loginMsg { margin-top:12px; font-size:0.82rem; min-height:20px; }
+#loginMsg.err { color:#f87171; } #loginMsg.ok { color:#5dd865; }
+/* ── User info topbar ── */
+.user-info { display:flex; align-items:center; gap:7px; font-size:0.76rem; color:#5a5a8a; }
+.user-email { max-width:130px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.btn-logout { background:none; border:1px solid #2a2a42; border-radius:6px; color:#5a5a8a; padding:4px 9px; font-size:0.74rem; cursor:pointer; }
+.btn-logout:hover { border-color:#f87171; color:#f87171; }
+.sync-dot { width:7px; height:7px; border-radius:50%; background:#2a2a4a; flex-shrink:0; transition:background 0.4s; }
+.sync-dot.saving { background:#f5a623; }
+.sync-dot.saved  { background:#5dd865; }
+.sync-dot.err    { background:#f87171; }
 #shutdownOverlay.active { display: flex; }
 #shutdownClock { font-size: 3.5rem; font-weight: bold; color: #2a2a5a; font-family: 'Courier New', monospace; letter-spacing: 6px; }
 #shutdownLabel { font-size: 0.8rem; color: #1e1e3a; letter-spacing: 0.2em; text-transform: uppercase; }
@@ -63,8 +88,8 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
 
 /* ── Main ── */
 .main { flex: 1; padding: 16px 14px 14px; }
-.offset-box { background: #1e1e1e; border: 1px dashed #2e2e2e; border-radius: 8px; padding: 9px 14px; margin-bottom: 14px; text-align: center; font-size: 0.84rem; color: #555; transition: all 0.3s; }
-.offset-box.active { border-color: #3db843; color: #3db843; background: #0a1a0a; border-style: solid; }
+.offset-box { background: #22223a; border: 1px dashed #35355a; border-radius: 8px; padding: 9px 14px; margin-bottom: 14px; text-align: center; font-size: 0.84rem; color: #6060a0; transition: all 0.3s; }
+.offset-box.active { border-color: #3db843; color: #5dd865; background: #0e2a0e; border-style: solid; }
 
 /* ── Table (desktop) ── */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -145,6 +170,9 @@ tr.ramp-row:hover td { background: #1a1a38; }
 .sheet-tab-del { background: none; border: none; color: #555; font-size: 0.85rem; cursor: pointer; padding: 0 2px; line-height: 1; }
 .sheet-tab-del:hover { color: #e03535; }
 .sheet-tab.active .sheet-tab-del { color: #8a6a00; }
+.sheet-tab-dup { background: none; border: none; color: #4a4a8a; font-size: 0.82rem; cursor: pointer; padding: 0 2px; line-height: 1; transition: color 0.15s; }
+.sheet-tab-dup:hover { color: #a0a0f8; }
+.ramp-bath-lbl { font-size: 0.68rem; color: #5dd865; text-align: center; margin-top: 3px; min-height: 14px; }
 .sheet-add-btn { background: none; border: 1px solid #2a2a42; border-radius: 5px; color: #555; font-size: 1rem; width: 26px; height: 26px; margin-bottom: 5px; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-left: 4px; flex-shrink: 0; }
 .sheet-add-btn:hover { color: #f5a623; border-color: #f5a623; }
 
@@ -220,6 +248,19 @@ tr.ramp-row:hover td { background: #1a1a38; }
 </head>
 <body>
 
+<!-- Login overlay -->
+<div id="loginOverlay">
+  <div id="loginBox">
+    <h2>🔬 Lab Tools</h2>
+    <div class="sub">Sign in to sync your data</div>
+    <input class="login-inp" type="email" id="loginEmail" placeholder="Email" autocomplete="email">
+    <input class="login-inp" type="password" id="loginPassword" placeholder="Password" autocomplete="current-password">
+    <button class="btn-login" onclick="doLogin()">Sign In</button>
+    <button class="btn-register" onclick="doRegister()">Create Account</button>
+    <div id="loginMsg"></div>
+  </div>
+</div>
+
 <!-- Shutdown overlay -->
 <div id="shutdownOverlay" onclick="togglePower()">
   <div id="shutdownClock">--:--:--</div>
@@ -284,6 +325,11 @@ tr.ramp-row:hover td { background: #1a1a38; }
   </div>
   <textarea class="notes-input" id="notesInput" placeholder="Notes..." oninput="saveNotes()" rows="1"></textarea>
   <button class="btn-settings" onclick="openSettings()">⚙ Settings</button>
+  <div class="user-info">
+    <div class="sync-dot" id="syncDot" title="Sync status"></div>
+    <span class="user-email" id="userEmail"></span>
+    <button class="btn-logout" onclick="doLogout()">Exit</button>
+  </div>
   <button class="btn-power" id="powerBtn" onclick="togglePower()" title="Shutdown / Wake">
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
       <path d="M12 2v6M5.6 5.6A9 9 0 1018.4 5.6"/>
@@ -537,6 +583,61 @@ function parseDuration(str){
   return(Math.abs(h)*3600+m*60+s)*1000;
 }
 function msToDur(ms){const t=Math.round(Math.abs(ms)/1000);return pad(Math.floor(t/3600))+':'+pad(Math.floor((t%3600)/60))+':'+pad(t%60);}
+
+/* Duration auto-formatter: user types digits only, colons auto-inserted */
+function attachDurFormatter(el, onChange) {
+  el.setAttribute('inputmode','numeric');
+  el.setAttribute('autocomplete','off');
+  // _d = raw digits typed so far, max 6, left-to-right
+  el._d = el.value.replace(/\D/g,'').slice(0,6);
+
+  function apply() {
+    if (!el._d) { el.value=''; if(onChange) onChange(''); return; }
+    const p = el._d.padStart(6,'0');
+    el.value = p.slice(0,2)+':'+p.slice(2,4)+':'+p.slice(4,6);
+    if(onChange) onChange(el.value);
+  }
+
+  // Desktop: keydown gives exact key info
+  el.addEventListener('keydown', e => {
+    if (e.ctrlKey||e.metaKey||e.key==='Tab') return; // allow shortcuts
+    if (e.key==='Backspace') {
+      e.preventDefault(); el._d=el._d.slice(0,-1); apply(); return;
+    }
+    if (e.key==='Delete') {
+      e.preventDefault(); el._d=''; apply(); return;
+    }
+    if (/^\d$/.test(e.key)) {
+      e.preventDefault();
+      if (el._d.length<6) el._d+=e.key;
+      apply(); return;
+    }
+    // Unknown key (e.g. mobile 'Unidentified'): don't preventDefault
+    // so the browser fires 'input' which the handler below catches
+  });
+
+  // Mobile fallback: fires after browser already changed el.value
+  el.addEventListener('input', () => {
+    const cur = el.value.replace(/\D/g,'');
+    if (cur.length > el._d.length) {
+      // digit(s) added — append them (up to 6 total)
+      el._d = (el._d + cur.slice(el._d.length)).slice(0,6);
+    } else if (cur.length < el._d.length) {
+      // deletion
+      el._d = el._d.slice(0, cur.length);
+    }
+    apply();
+  });
+
+  el.addEventListener('paste', e => {
+    e.preventDefault();
+    const txt=(e.clipboardData||window.clipboardData).getData('text');
+    el._d=(el._d+txt.replace(/\D/g,'')).slice(0,6);
+    apply();
+  });
+
+  apply(); // initialise display from stored value
+}
 function calcRate(st,et,durStr){
   const a=parseFloat(st),b=parseFloat(et),dms=parseDuration(durStr);
   if(isNaN(a)||isNaN(b)||isNaN(dms)||dms===0) return '';
@@ -630,9 +731,23 @@ function recalcBathOffset(){
   }else{bathCalcOffset=null;box.className='offset-box';box.textContent='Waiting for reference row input...';}
   recalcAllBath();
 }
+function recalcRampBath(row){
+  const sb=document.getElementById('sbath_'+row.id);
+  const eb=document.getElementById('ebath_'+row.id);
+  if(!sb&&!eb) return;
+  if(bathCalcOffset!==null){
+    const st=parseFloat(row.startTemp),et=parseFloat(row.endTemp);
+    if(sb) sb.textContent=!isNaN(st)?'Bath '+(st+bathCalcOffset).toFixed(2)+'°C':'—';
+    if(eb) eb.textContent=!isNaN(et)?'Bath '+(et+bathCalcOffset).toFixed(2)+'°C':'—';
+  }else{
+    if(sb) sb.textContent='—';
+    if(eb) eb.textContent='—';
+  }
+}
+
 function recalcAllBath(){
   sheetsData[currentSheetIdx].rows.forEach(row=>{
-    if(row.type==='ramp') return;
+    if(row.type==='ramp'){recalcRampBath(row);return;}
     const cell=document.getElementById('bath_'+row.id);if(!cell)return;
     const ind=parseFloat(row.indVal);
     if(bathCalcOffset!==null&&!isNaN(ind)){cell.textContent=(ind+bathCalcOffset).toFixed(2);cell.className='calc-value';}
@@ -810,7 +925,8 @@ function renderDataRow(row){
   line1.appendChild(startIn);
   const durIn=document.createElement('input');
   durIn.type='text';durIn.className='dur-input';durIn.id='dur_'+row.id;durIn.placeholder='hh:mm:ss';durIn.value=row.durationStr||'';
-  durIn.addEventListener('change',()=>{row.durationStr=durIn.value;saveToStorage();});
+  attachDurFormatter(durIn, v=>{ row.durationStr=v; saveToStorage(); });
+  durIn.addEventListener('change',()=>{ row.durationStr=durIn.value; saveToStorage(); });
   line1.appendChild(durIn);
   const playBtn=document.createElement('button');
   playBtn.className='btn-play';playBtn.id='playbtn_'+row.id;playBtn.innerHTML=SVG_PLAY;
@@ -843,16 +959,22 @@ function renderRampRow(row){
   const sLbl=document.createElement('span');sLbl.className='temp-lbl tl-s';sLbl.textContent='Start °C';
   const sTIn=document.createElement('input');
   sTIn.type='number';sTIn.step='any';sTIn.className='temp-input';sTIn.id='st_'+row.id;sTIn.placeholder='0.00';sTIn.value=row.startTemp||'';
-  sTIn.addEventListener('input',()=>{row.startTemp=sTIn.value;updateRampDerived(row);saveToStorage();});
-  sDiv.appendChild(sLbl);sDiv.appendChild(sTIn);tdS.appendChild(sDiv);tr.appendChild(tdS);
+  sTIn.addEventListener('input',()=>{row.startTemp=sTIn.value;updateRampDerived(row);recalcRampBath(row);saveToStorage();});
+  sDiv.appendChild(sLbl);sDiv.appendChild(sTIn);
+  const sBathLbl=document.createElement('div');sBathLbl.className='ramp-bath-lbl';sBathLbl.id='sbath_'+row.id;sBathLbl.textContent='—';
+  sDiv.appendChild(sBathLbl);
+  tdS.appendChild(sDiv);tr.appendChild(tdS);
 
   const tdE=document.createElement('td');tdE.className='td-b';
   const eDiv=document.createElement('div');eDiv.className='temp-cell';
   const eLbl=document.createElement('span');eLbl.className='temp-lbl tl-e';eLbl.textContent='End °C';
   const eTIn=document.createElement('input');
   eTIn.type='number';eTIn.step='any';eTIn.className='temp-input';eTIn.id='et_'+row.id;eTIn.placeholder='0.00';eTIn.value=row.endTemp||'';
-  eTIn.addEventListener('input',()=>{row.endTemp=eTIn.value;updateRampDerived(row);saveToStorage();});
-  eDiv.appendChild(eLbl);eDiv.appendChild(eTIn);tdE.appendChild(eDiv);tr.appendChild(tdE);
+  eTIn.addEventListener('input',()=>{row.endTemp=eTIn.value;updateRampDerived(row);recalcRampBath(row);saveToStorage();});
+  eDiv.appendChild(eLbl);eDiv.appendChild(eTIn);
+  const eBathLbl=document.createElement('div');eBathLbl.className='ramp-bath-lbl';eBathLbl.id='ebath_'+row.id;eBathLbl.textContent='—';
+  eDiv.appendChild(eBathLbl);
+  tdE.appendChild(eDiv);tr.appendChild(tdE);
 
   const tdSC=document.createElement('td');tdSC.className='td-sc sc-cell';
   // Line 1: datetime + play
@@ -870,6 +992,12 @@ function renderRampRow(row){
   const l2=document.createElement('div');l2.className='sc-line';
   const durIn=document.createElement('input');
   durIn.type='text';durIn.className='dur-input';durIn.id='dur_'+row.id;durIn.placeholder='hh:mm:ss';durIn.value=row.durationStr||'';
+  attachDurFormatter(durIn, v=>{
+    row.durationStr=v; row.lastEdited='dur';
+    const r=calcRate(row.startTemp,row.endTemp,v);
+    const rEl=document.getElementById('rate_'+row.id);if(rEl&&r!==''){rEl.value=r;row.rateStr=r;}
+    saveToStorage();
+  });
   durIn.addEventListener('change',()=>{
     row.durationStr=durIn.value;row.lastEdited='dur';
     const r=calcRate(row.startTemp,row.endTemp,durIn.value);
@@ -954,11 +1082,24 @@ function deleteSheet(idx){
   document.getElementById('rigNumber').value=sheetsData[currentSheetIdx].rigNumber;
   renderTable();updateSheetTabs();saveToStorage();
 }
+function duplicateSheet(idx){
+  saveCurrentSheetMeta();
+  const copy=JSON.parse(JSON.stringify(sheetsData[idx]));
+  copy.name=sheetsData[idx].name+' ②';
+  copy.rows.forEach(r=>{r.id=++rowIdCounter;r.targetMs=null;});
+  sheetsData.push(copy);
+  currentSheetIdx=sheetsData.length-1;
+  document.getElementById('rigNumber').value=copy.rigNumber;
+  renderTable();updateSheetTabs();saveToStorage();
+}
+
 function updateSheetTabs(){
   const bar=document.getElementById('sheetBar');bar.innerHTML='';
   sheetsData.forEach((sheet,idx)=>{
     const tab=document.createElement('div');tab.className='sheet-tab'+(idx===currentSheetIdx?' active':'');
     const nm=document.createElement('span');nm.className='sheet-tab-name';nm.textContent=sheet.name;nm.onclick=()=>switchSheet(idx);tab.appendChild(nm);
+    const dupBtn=document.createElement('button');dupBtn.className='sheet-tab-dup';dupBtn.title='Duplicate sheet';dupBtn.textContent='⧉';
+    dupBtn.onclick=e=>{e.stopPropagation();duplicateSheet(idx);};tab.appendChild(dupBtn);
     if(sheetsData.length>1){
       const d=document.createElement('button');d.className='sheet-tab-del';d.title='Delete';d.textContent='×';
       d.onclick=e=>{e.stopPropagation();if(confirm('Delete '+sheet.name+'?'))deleteSheet(idx);};tab.appendChild(d);
@@ -968,12 +1109,103 @@ function updateSheetTabs(){
   const ab=document.createElement('button');ab.className='sheet-add-btn';ab.textContent='+';ab.title='New sheet';ab.onclick=addSheet;bar.appendChild(ab);
 }
 
+// ══════════════════════════════════════
+//  Supabase Auth & Sync
+// ══════════════════════════════════════
+const SB_URL='https://mvirpcwcclneaanxtjpr.supabase.co';
+const SB_KEY='sb_publishable__AK16ngHtRqFzzBiJIk8-Q_jDAp6xHS';
+const sb=window.supabase.createClient(SB_URL,SB_KEY);
+let sbSaveTimer=null;
+
+function setSyncDot(state){const d=document.getElementById('syncDot');if(d)d.className='sync-dot '+(state||'');}
+
+async function saveToSupabase(){
+  try{
+    const{data:{user}}=await sb.auth.getUser();
+    if(!user)return;
+    setSyncDot('saving');
+    const{error}=await sb.from('user_data').upsert({
+      user_id:user.id,sheets_data:sheetsData,
+      row_id_counter:rowIdCounter,current_sheet_idx:currentSheetIdx,
+      updated_at:new Date().toISOString()
+    });
+    setSyncDot(error?'err':'saved');
+    setTimeout(()=>setSyncDot(''),2000);
+  }catch(e){setSyncDot('err');}
+}
+
+async function loadFromSupabase(){
+  try{
+    const{data:{user}}=await sb.auth.getUser();
+    if(!user)return false;
+    const{data,error}=await sb.from('user_data').select('*').eq('user_id',user.id).single();
+    if(error||!data||!data.sheets_data)return false;
+    sheetsData=data.sheets_data;
+    rowIdCounter=data.row_id_counter||0;
+    currentSheetIdx=Math.min(data.current_sheet_idx||0,sheetsData.length-1);
+    return true;
+  }catch(e){return false;}
+}
+
+function showLoginMsg(txt,isErr){const el=document.getElementById('loginMsg');el.textContent=txt;el.className=isErr?'err':'ok';}
+
+async function doLogin(){
+  const email=document.getElementById('loginEmail').value.trim();
+  const pass=document.getElementById('loginPassword').value;
+  if(!email||!pass){showLoginMsg('Fill in email and password.',true);return;}
+  showLoginMsg('Signing in…','');
+  const{data,error}=await sb.auth.signInWithPassword({email,password:pass});
+  if(error){showLoginMsg(error.message,true);return;}
+  await onSignedIn(data.user);
+}
+
+async function doRegister(){
+  const email=document.getElementById('loginEmail').value.trim();
+  const pass=document.getElementById('loginPassword').value;
+  if(!email||!pass){showLoginMsg('Fill in email and password.',true);return;}
+  if(pass.length<6){showLoginMsg('Password min 6 characters.',true);return;}
+  showLoginMsg('Creating account…','');
+  const{data,error}=await sb.auth.signUp({email,password:pass});
+  if(error){showLoginMsg(error.message,true);return;}
+  await onSignedIn(data.user);
+}
+
+async function onSignedIn(user){
+  document.getElementById('loginOverlay').classList.remove('show');
+  document.getElementById('userEmail').textContent=user.email;
+  const loaded=await loadFromSupabase();
+  if(!loaded)loadFromStorage();
+  document.getElementById('rigNumber').value=sheetsData[currentSheetIdx].rigNumber;
+  renderTable();updateSheetTabs();
+  setTimeout(autoStartSequential,150);
+}
+
+async function doLogout(){
+  await sb.auth.signOut();
+  document.getElementById('userEmail').textContent='';
+  document.getElementById('loginOverlay').classList.add('show');
+}
+
+// Patch saveToStorage to also cloud-sync
+const _localSave=saveToStorage;
+saveToStorage=function(){
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({sheetsData,rowIdCounter,currentSheetIdx}));}catch(e){}
+  clearTimeout(sbSaveTimer);
+  sbSaveTimer=setTimeout(saveToSupabase,2500);
+};
+
 /* ── Init ── */
-const restored=loadFromStorage();
-document.getElementById('rigNumber').value=sheetsData[currentSheetIdx].rigNumber;
-renderTable();updateSheetTabs();
-if(!restored){for(let i=0;i<3;i++)addDataRow();}
-else { setTimeout(autoStartSequential, 100); }
+(async()=>{
+  const{data:{session}}=await sb.auth.getSession();
+  if(session){
+    await onSignedIn(session.user);
+  }else{
+    // Show login — but also init basic table so app isn't blank behind overlay
+    loadFromStorage();
+    renderTable();updateSheetTabs();
+    document.getElementById('loginOverlay').classList.add('show');
+  }
+})();
 syncTime();setInterval(syncTime,300000);
 
 // ── PWA Service Worker ──
