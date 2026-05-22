@@ -99,6 +99,7 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
 .dash-stir.on { font-size: 0.68rem; color: #1a5a1a; }
 .dash-stir.off { font-size: 0.68rem; color: #2a2a4a; }
 .dash-idle { font-size: 0.7rem; color: #1a1a3a; }
+.dash-indicator { font-size: 0.85rem; color: #5a8a5a; font-family: 'Courier New', monospace; margin-bottom: 4px; font-weight: bold; }
 .dash-hint { font-size: 0.68rem; color: #16163a; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 10px; }
 #shutdownPowerBtn { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #1a1a4a; background: none; color: #1a1a4a; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
@@ -497,6 +498,27 @@ function updateDashboard(){
       const lbl=activeRow.type==='ramp'?'Ramp '+idx:'Row '+idx;
       const rowDiv=document.createElement('div');
       rowDiv.className='dash-row-lbl';rowDiv.textContent=lbl;card.appendChild(rowDiv);
+
+      // Current indicator temperature
+      let indText='—';
+      if(activeRow.type==='data'){
+        const v=parseFloat(activeRow.indVal);
+        if(!isNaN(v)) indText=v.toFixed(2)+' °C';
+      } else if(activeRow.type==='ramp'){
+        const st=parseFloat(activeRow.startTemp),et=parseFloat(activeRow.endTemp);
+        if(!isNaN(st)&&!isNaN(et)){
+          const dms=parseDuration(activeRow.durationStr||'');
+          if(!isNaN(dms)&&dms>0){
+            // progress = 1 - remaining/total
+            const progress=Math.max(0,Math.min(1,1-remaining/dms));
+            indText=(st+(et-st)*progress).toFixed(2)+' °C';
+          } else { indText=st.toFixed(2)+' → '+et.toFixed(2)+' °C'; }
+        }
+      }
+      const indDiv=document.createElement('div');
+      indDiv.className='dash-indicator';indDiv.textContent='Ind: '+indText;
+      card.appendChild(indDiv);
+
       const ts=Math.floor(remaining/1000);
       const h=Math.floor(ts/3600),m=Math.floor((ts%3600)/60),s=ts%60;
       const cdDiv=document.createElement('div');
