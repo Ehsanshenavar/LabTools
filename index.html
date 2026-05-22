@@ -99,6 +99,7 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
 .dash-stir.on { font-size: 0.68rem; color: #1a5a1a; }
 .dash-stir.off { font-size: 0.68rem; color: #2a2a4a; }
 .dash-idle { font-size: 0.7rem; color: #1a1a3a; }
+.dash-indicator { font-size: 0.85rem; color: #5a8a5a; font-family: 'Courier New', monospace; margin-bottom: 4px; font-weight: bold; }
 .dash-hint { font-size: 0.68rem; color: #16163a; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 10px; }
 #shutdownPowerBtn { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #1a1a4a; background: none; color: #1a1a4a; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
@@ -486,6 +487,10 @@ function updateDashboard(){
 
     const card=document.createElement('div');
     card.className='dash-card'+(activeRow?' active-card':'');
+    card.style.cursor='pointer';
+    card.title='Tap to open '+sheet.name;
+    const sheetIdx=sheetsData.indexOf(sheet);
+    card.onclick=e=>{e.stopPropagation();togglePower();switchSheet(sheetIdx);};
 
     const rigDiv=document.createElement('div');
     rigDiv.className='dash-rig';
@@ -497,6 +502,23 @@ function updateDashboard(){
       const lbl=activeRow.type==='ramp'?'Ramp '+idx:'Row '+idx;
       const rowDiv=document.createElement('div');
       rowDiv.className='dash-row-lbl';rowDiv.textContent=lbl;card.appendChild(rowDiv);
+
+      // Current indicator temperature
+      let indText='—';
+      if(activeRow.type==='data'){
+        const v=parseFloat(activeRow.indVal);
+        if(!isNaN(v)) indText=v.toFixed(2)+' °C';
+      } else if(activeRow.type==='ramp'){
+        const et=parseFloat(activeRow.endTemp);
+        const st=parseFloat(activeRow.startTemp);
+        if(!isNaN(st)&&!isNaN(et)) indText=st.toFixed(1)+' → '+et.toFixed(1)+' °C';
+        else if(!isNaN(et)) indText='→ '+et.toFixed(2)+' °C';
+      }
+      const indDiv=document.createElement('div');
+      indDiv.className='dash-indicator';
+      indDiv.textContent='🌡 '+indText;
+      card.appendChild(indDiv);
+
       const ts=Math.floor(remaining/1000);
       const h=Math.floor(ts/3600),m=Math.floor((ts%3600)/60),s=ts%60;
       const cdDiv=document.createElement('div');
@@ -741,11 +763,21 @@ function calcDur(st,et,rateStr){
   if(isNaN(a)||isNaN(b)||isNaN(r)||r===0) return '';
   return msToDur(Math.abs(b-a)/Math.abs(r)*3600000);
 }
+const DAYS_SHORT=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+function msToDatetimeLocal(ms){
+  if(!ms) return '';
+  const d=new Date(ms);
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+}
 function formatFinish(tMs){
   if(!tMs) return '';
-  if(manualTzOffset!==null){const d=new Date(tMs);return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+'  '+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());}
+  if(manualTzOffset!==null){
+    const d=new Date(tMs);
+    return DAYS_SHORT[d.getUTCDay()]+' '+d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+'  '+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes());
+  }
   const d=new Date(tMs);
-  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'  '+pad(d.getHours())+':'+pad(d.getMinutes());
+  return DAYS_SHORT[d.getDay()]+' '+d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'  '+pad(d.getHours())+':'+pad(d.getMinutes());
 }
 /* Convert datetime-local string to UTC ms, correcting for timezone */
 function localStrToTargetMs(dtStr,durationMs){
@@ -825,10 +857,17 @@ function recalcRampBath(row){
 function recalcAllBath(){
   sheetsData[currentSheetIdx].rows.forEach(row=>{
     if(row.type==='ramp'){recalcRampBath(row);return;}
-    const cell=document.getElementById('bath_'+row.id);if(!cell)return;
+    const cell=document.getElementById('bath_'+row.id);
+    const indLbl=document.getElementById('bathind_'+row.id);
     const ind=parseFloat(row.indVal);
-    if(bathCalcOffset!==null&&!isNaN(ind)){cell.textContent=(ind+bathCalcOffset).toFixed(2);cell.className='calc-value';}
-    else{cell.textContent='—';cell.className='calc-value calc-empty';}
+    if(bathCalcOffset!==null&&!isNaN(ind)){
+      const v=(ind+bathCalcOffset).toFixed(2);
+      if(cell){cell.textContent=v;cell.className='td-b calc-value';}
+      if(indLbl){indLbl.textContent='Bath '+v+'°C';}
+    }else{
+      if(cell){cell.textContent='—';cell.className='td-b calc-value calc-empty';}
+      if(indLbl){indLbl.textContent='—';}
+    }
   });
 }
 
@@ -986,10 +1025,15 @@ function renderDataRow(row){
   const tdNum=document.createElement('td');tdNum.className='td-num row-num';tdNum.textContent=idx;tr.appendChild(tdNum);
 
   const tdInd=document.createElement('td');tdInd.className='td-a';
+  const indWrap=document.createElement('div');indWrap.className='temp-cell';
   const indIn=document.createElement('input');
   indIn.type='number';indIn.step='any';indIn.className='bath-input';indIn.id='ind_'+row.id;indIn.placeholder='0.00';indIn.value=row.indVal||'';
   indIn.addEventListener('input',()=>{row.indVal=indIn.value;recalcAllBath();saveToStorage();});
-  tdInd.appendChild(indIn);tr.appendChild(tdInd);
+  const indBathLbl=document.createElement('div');indBathLbl.className='ramp-bath-lbl';indBathLbl.id='bathind_'+row.id;
+  const ip0=parseFloat(row.indVal);
+  indBathLbl.textContent=(bathCalcOffset!==null&&!isNaN(ip0))?'Bath '+(ip0+bathCalcOffset).toFixed(2)+'°C':'—';
+  indWrap.appendChild(indIn);indWrap.appendChild(indBathLbl);
+  tdInd.appendChild(indWrap);tr.appendChild(tdInd);
 
   const tdBath=document.createElement('td');tdBath.className='td-b';tdBath.id='bath_'+row.id;
   const ip=parseFloat(row.indVal);
@@ -1137,12 +1181,13 @@ function getInsertIdx(){
 function addDataRow(){
   const sheet=sheetsData[currentSheetIdx];
   const idx=getInsertIdx();
-  const row={id:++rowIdCounter,type:'data',indVal:'',startDateStr:'',durationStr:'',targetMs:null,stirrer:false};
+  let defStart='';
+  if(idx>0){const prev=sheet.rows[idx-1];if(prev.targetMs)defStart=msToDatetimeLocal(prev.targetMs);}
+  const row={id:++rowIdCounter,type:'data',indVal:'',startDateStr:defStart,durationStr:'',targetMs:null,stirrer:false};
   sheet.rows.splice(idx,0,row);
   rebuildTbody();
-  // Set next default to position after inserted row
   const posEl=document.getElementById('insertPos');
-  if(posEl) posEl.value=idx+2;
+  if(posEl)posEl.value=idx+2;
   saveToStorage();
   setTimeout(()=>{const el=document.getElementById('ind_'+row.id);if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'nearest'});}},30);
 }
@@ -1150,14 +1195,15 @@ function addDataRow(){
 function addRampRow(){
   const sheet=sheetsData[currentSheetIdx];
   const idx=getInsertIdx();
-  // Default start temp from row above insert position
+  let defTemp='';
+  if(idx>0){const prev=sheet.rows[idx-1];defTemp=prev.type==='ramp'?(prev.endTemp||''):(prev.indVal||'');}
   let defStart='';
-  if(idx>0){const prev=sheet.rows[idx-1];defStart=prev.type==='ramp'?(prev.endTemp||''):(prev.indVal||'');}
-  const row={id:++rowIdCounter,type:'ramp',startTemp:defStart,endTemp:'',startDateStr:'',durationStr:'',rateStr:'',lastEdited:'dur',targetMs:null,stirrer:false};
+  if(idx>0){const prev=sheet.rows[idx-1];if(prev.targetMs)defStart=msToDatetimeLocal(prev.targetMs);}
+  const row={id:++rowIdCounter,type:'ramp',startTemp:defTemp,endTemp:'',startDateStr:defStart,durationStr:'',rateStr:'',lastEdited:'dur',targetMs:null,stirrer:false};
   sheet.rows.splice(idx,0,row);
   rebuildTbody();
   const posEl=document.getElementById('insertPos');
-  if(posEl) posEl.value=idx+2;
+  if(posEl)posEl.value=idx+2;
   saveToStorage();
   setTimeout(()=>{const el=document.getElementById('st_'+row.id);if(el){el.focus();el.scrollIntoView({behavior:'smooth',block:'nearest'});}},30);
 }
