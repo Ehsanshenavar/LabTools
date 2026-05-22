@@ -33,6 +33,8 @@ body { font-family: Arial, sans-serif; background: #181824; color: #dde1f0; min-
 .btn-power:hover { box-shadow: 0 0 12px rgba(93,216,101,0.4); transform: scale(1.05); }
 .btn-power.off { border-color: #4a1a1a; background: #1a0a0a; color: #f87171; box-shadow: none; }
 .btn-power.off:hover { box-shadow: 0 0 12px rgba(248,113,113,0.4); }
+.btn-chat { background: #14202c; border: 1px solid #24506f; border-radius: 8px; color: #7dd3fc; padding: 8px 12px; font-size: 0.88rem; cursor: pointer; white-space: nowrap; }
+.btn-chat:hover { border-color: #7dd3fc; }
 
 /* Stirrer toggle */
 .stirrer-wrap { display: flex; align-items: center; gap: 6px; margin-top: 5px; padding-top: 4px; border-top: 1px solid #25254a; }
@@ -102,6 +104,29 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
 .dash-indicator { font-size: 0.85rem; color: #5a8a5a; font-family: 'Courier New', monospace; margin-bottom: 4px; font-weight: bold; }
 .dash-hint { font-size: 0.68rem; color: #16163a; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 10px; }
 #shutdownPowerBtn { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #1a1a4a; background: none; color: #1a1a4a; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+/* Lab assistant */
+#chatOverlay { display: none; position: fixed; inset: 0; z-index: 220; background: rgba(3,3,15,0.62); align-items: flex-end; justify-content: flex-end; padding: 16px; }
+#chatOverlay.open { display: flex; }
+#chatPanel { width: min(440px, 100%); height: min(620px, calc(100vh - 32px)); background: #171728; border: 1px solid #2e4660; border-radius: 12px; display: flex; flex-direction: column; box-shadow: 0 18px 50px rgba(0,0,0,0.38); overflow: hidden; }
+.chat-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #24384f; background: #111d2a; }
+.chat-title { color: #7dd3fc; font-weight: bold; font-size: 0.95rem; }
+.chat-status { color: #6b7280; font-size: 0.72rem; margin-top: 2px; }
+.chat-close { background: none; border: none; color: #6b7280; cursor: pointer; font-size: 1.2rem; padding: 4px 8px; }
+.chat-close:hover { color: #dde1f0; }
+#chatMessages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.chat-msg { max-width: 88%; border-radius: 10px; padding: 9px 11px; font-size: 0.86rem; line-height: 1.4; white-space: pre-wrap; }
+.chat-msg.user { align-self: flex-end; background: #20344a; color: #e0f2fe; border: 1px solid #2c5678; }
+.chat-msg.assistant { align-self: flex-start; background: #202033; color: #d8def0; border: 1px solid #303052; }
+.chat-msg.err { border-color: #743232; color: #fecaca; }
+.chat-actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px 10px; }
+.chat-chip { background: #111d2a; border: 1px solid #24384f; color: #93c5fd; border-radius: 999px; padding: 6px 10px; font-size: 0.75rem; cursor: pointer; }
+.chat-chip:hover { border-color: #7dd3fc; color: #e0f2fe; }
+.chat-compose { border-top: 1px solid #24384f; padding: 10px; display: flex; gap: 8px; background: #111827; }
+#chatInput { flex: 1; min-height: 42px; max-height: 120px; resize: vertical; background: #0f1724; border: 1px solid #26384f; color: #dde1f0; border-radius: 8px; padding: 9px 10px; font-family: Arial, sans-serif; font-size: 0.86rem; outline: none; }
+#chatInput:focus { border-color: #7dd3fc; }
+#chatSend { align-self: flex-end; background: #12314a; border: 1px solid #2b6d95; color: #7dd3fc; border-radius: 8px; padding: 10px 14px; cursor: pointer; font-weight: bold; }
+#chatSend:disabled { opacity: 0.55; cursor: wait; }
 
 /* ── Main ── */
 .main { flex: 1; padding: 16px 14px 14px; }
@@ -265,6 +290,8 @@ tr.ramp-row:hover td { background: #1a1a38; }
 
   /* Topbar: notes full width on very small screens */
   .notes-input { min-width: 120px; }
+  #chatOverlay { padding: 0; }
+  #chatPanel { width: 100%; height: 100%; border-radius: 0; }
 }
 </style>
 </head>
@@ -341,6 +368,29 @@ tr.ramp-row:hover td { background: #1a1a38; }
   </div>
 </div>
 
+<!-- Lab assistant -->
+<div id="chatOverlay" onclick="chatOverlayClick(event)">
+  <div id="chatPanel" role="dialog" aria-label="Lab assistant">
+    <div class="chat-head">
+      <div>
+        <div class="chat-title">Lab Assistant</div>
+        <div class="chat-status" id="chatStatus">Uses this rig sheet for context</div>
+      </div>
+      <button class="chat-close" onclick="closeChat()" aria-label="Close assistant">x</button>
+    </div>
+    <div id="chatMessages"></div>
+    <div class="chat-actions">
+      <button class="chat-chip" onclick="askQuickChat('Summarise this rig sheet')">Summarise</button>
+      <button class="chat-chip" onclick="askQuickChat('What finishes next?')">Next finish</button>
+      <button class="chat-chip" onclick="askQuickChat('Check for incomplete rows')">Check rows</button>
+    </div>
+    <div class="chat-compose">
+      <textarea id="chatInput" placeholder="Ask about this rig..." onkeydown="chatInputKey(event)"></textarea>
+      <button id="chatSend" onclick="sendChat()">Ask</button>
+    </div>
+  </div>
+</div>
+
 <!-- Topbar -->
 <div class="topbar">
   <div class="rig-section">
@@ -349,6 +399,7 @@ tr.ramp-row:hover td { background: #1a1a38; }
   </div>
   <textarea class="notes-input" id="notesInput" placeholder="Notes..." oninput="saveNotes()" rows="1"></textarea>
   <button class="btn-settings" onclick="openSettings()">⚙ Settings</button>
+  <button class="btn-chat" onclick="openChat()">Ask</button>
   <div class="user-info">
     <div class="sync-dot" id="syncDot" title="Sync status"></div>
     <span class="user-email" id="userEmail"></span>
@@ -686,6 +737,135 @@ function loadFromStorage(){
 }
 
 /* ── Utilities ── */
+/* Lab assistant */
+let chatBooted=false;
+let chatBusy=false;
+
+function openChat(){
+  document.getElementById('chatOverlay').classList.add('open');
+  if(!chatBooted){
+    chatBooted=true;
+    addChatMessage('assistant','Ask me about the current rig sheet. I can summarise rows, find the next finish, and check for missing values. If the cloud assistant is deployed I will use it; otherwise I will answer locally.');
+  }
+  setTimeout(()=>document.getElementById('chatInput')?.focus(),50);
+}
+function closeChat(){document.getElementById('chatOverlay').classList.remove('open');}
+function chatOverlayClick(e){if(e.target===document.getElementById('chatOverlay'))closeChat();}
+function chatInputKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
+function askQuickChat(q){openChat();document.getElementById('chatInput').value=q;sendChat();}
+
+function addChatMessage(role,text,isErr){
+  const box=document.getElementById('chatMessages');
+  const msg=document.createElement('div');
+  msg.className='chat-msg '+role+(isErr?' err':'');
+  msg.textContent=text;
+  box.appendChild(msg);
+  box.scrollTop=box.scrollHeight;
+}
+
+function getAssistantContext(){
+  saveCurrentSheetMeta();
+  const sheet=sheetsData[currentSheetIdx]||{rows:[]};
+  return {
+    app:'Lab Tools',
+    generatedAt:new Date().toISOString(),
+    timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,
+    currentSheetIdx,
+    sheet:{
+      name:sheet.name,
+      rigNumber:sheet.rigNumber,
+      notes:sheet.notes||'',
+      refInd:sheet.refInd||'',
+      refBath:sheet.refBath||'',
+      rows:(sheet.rows||[]).map((r,idx)=>({
+        number:idx+1,
+        type:r.type||'data',
+        indicator:r.indVal||'',
+        startTemp:r.startTemp||'',
+        endTemp:r.endTemp||'',
+        startDateStr:r.startDateStr||'',
+        durationStr:r.durationStr||'',
+        rateStr:r.rateStr||'',
+        targetMs:r.targetMs||null,
+        stirrer:!!r.stirrer
+      }))
+    }
+  };
+}
+
+async function sendChat(){
+  if(chatBusy)return;
+  const input=document.getElementById('chatInput');
+  const question=input.value.trim();
+  if(!question)return;
+  input.value='';
+  addChatMessage('user',question);
+  setChatBusy(true,'Thinking...');
+  const context=getAssistantContext();
+  try{
+    if(typeof sb!=='undefined'&&sb.functions){
+      const {data,error}=await sb.functions.invoke('lab-assistant',{body:{question,context}});
+      if(!error&&data&&(data.answer||data.message)){
+        addChatMessage('assistant',data.answer||data.message);
+        setChatBusy(false,'Cloud assistant');
+        return;
+      }
+    }
+    addChatMessage('assistant',localLabAssistant(question,context)+'\n\nCloud assistant is not connected yet, so this is the built-in local answer.');
+    setChatBusy(false,'Local assistant');
+  }catch(e){
+    addChatMessage('assistant',localLabAssistant(question,context)+'\n\nCloud assistant could not be reached yet, so this is the built-in local answer.');
+    setChatBusy(false,'Local assistant');
+  }
+}
+
+function setChatBusy(on,status){
+  chatBusy=on;
+  const btn=document.getElementById('chatSend');
+  const st=document.getElementById('chatStatus');
+  if(btn)btn.disabled=on;
+  if(st)st.textContent=status||'Uses this rig sheet for context';
+}
+
+function localLabAssistant(question,context){
+  const q=question.toLowerCase();
+  const sheet=context.sheet;
+  const rows=sheet.rows||[];
+  if(!rows.length)return 'This sheet has no rows yet. Add a row or ramp, then ask me to check it again.';
+
+  if(q.includes('next')||q.includes('finish')){
+    const now=Date.now();
+    const timed=rows
+      .filter(r=>r.targetMs&&r.targetMs>now)
+      .sort((a,b)=>a.targetMs-b.targetMs);
+    if(!timed.length)return 'I cannot see a future finish time yet. Add a start time and duration, then press the row play button.';
+    const r=timed[0];
+    return 'Next finish: row '+r.number+' at '+formatFinish(r.targetMs)+'. Duration: '+(r.durationStr||'not set')+'.';
+  }
+
+  if(q.includes('incomplete')||q.includes('missing')||q.includes('check')){
+    const issues=[];
+    rows.forEach(r=>{
+      if(r.type==='ramp'){
+        if(!r.startTemp||!r.endTemp)issues.push('Row '+r.number+': ramp temperature is incomplete.');
+        if(!r.durationStr&&!r.rateStr)issues.push('Row '+r.number+': add either duration or rate.');
+      }else if(!r.indicator){
+        issues.push('Row '+r.number+': indicator temperature is missing.');
+      }
+      if(!r.startDateStr)issues.push('Row '+r.number+': start time is missing.');
+      if(!r.durationStr)issues.push('Row '+r.number+': duration is missing.');
+    });
+    return issues.length?issues.join('\n'):'No obvious missing values found in the current sheet.';
+  }
+
+  const dataRows=rows.filter(r=>r.type!=='ramp').length;
+  const rampRows=rows.filter(r=>r.type==='ramp').length;
+  const stirrers=rows.filter(r=>r.stirrer).length;
+  const timed=rows.filter(r=>r.startDateStr&&r.durationStr).length;
+  const notes=sheet.notes?'\nNotes: '+sheet.notes:'';
+  return 'Sheet '+sheet.name+' has '+rows.length+' row(s): '+dataRows+' data row(s), '+rampRows+' ramp row(s), and '+timed+' row(s) with timing set. Stirrer is on in '+stirrers+' row(s). Reference indicator/bath: '+(sheet.refInd||'-')+' / '+(sheet.refBath||'-')+'.'+notes;
+}
+
 function realUtcMs(){return Date.now()+serverOffset;}
 function pad(n){return String(Math.floor(Math.abs(n))).padStart(2,'0');}
 function parseDuration(str){
