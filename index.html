@@ -61,7 +61,7 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
   .sheet-tab-dup { font-size: 0.95rem; }
   .sheet-add-btn { width: 34px; height: 34px; font-size: 1.1rem; }
 }
-#shutdownOverlay { display: none; position: fixed; inset: 0; z-index: 999; background: #03030a; flex-direction: column; align-items: center; justify-content: center; gap: 20px; cursor: pointer; }
+
 /* ── Login overlay ── */
 #loginOverlay { display:none; position:fixed; inset:0; z-index:1000; background:#0c0c18; flex-direction:column; align-items:center; justify-content:center; padding:20px; }
 #loginOverlay.show { display:flex; }
@@ -86,10 +86,21 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
 .sync-dot.saving { background:#f5a623; }
 .sync-dot.saved  { background:#5dd865; }
 .sync-dot.err    { background:#f87171; }
+#shutdownOverlay { display: none; position: fixed; inset: 0; z-index: 999; background: #03030f; flex-direction: column; align-items: center; justify-content: center; gap: 6px; cursor: pointer; padding: 20px; overflow-y: auto; }
 #shutdownOverlay.active { display: flex; }
-#shutdownClock { font-size: 3.5rem; font-weight: bold; color: #2a2a5a; font-family: 'Courier New', monospace; letter-spacing: 6px; }
-#shutdownLabel { font-size: 0.8rem; color: #1e1e3a; letter-spacing: 0.2em; text-transform: uppercase; }
-#shutdownPowerBtn { width: 56px; height: 56px; border-radius: 50%; border: 2px solid #2a2a5a; background: none; color: #2a2a5a; cursor: pointer; display: flex; align-items: center; justify-content: center; margin-top: 10px; }
+#shutdownDate { font-size: 0.82rem; color: #3a3a7a; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 2px; }
+#shutdownClock { font-size: 2.8rem; font-weight: bold; color: #3a3a8a; font-family: "Courier New", monospace; letter-spacing: 5px; margin-bottom: 18px; }
+#rigDash { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; width: 100%; max-width: 540px; margin-bottom: 16px; }
+.dash-card { background: #060614; border: 1px solid #14143a; border-radius: 12px; padding: 12px 16px; min-width: 120px; flex: 1 1 120px; text-align: center; }
+.dash-card.active-card { border-color: #2a2a7a; }
+.dash-rig { font-size: 0.75rem; color: #4a4a9a; text-transform: uppercase; letter-spacing: 0.1em; font-weight: bold; margin-bottom: 5px; }
+.dash-row-lbl { font-size: 0.68rem; color: #2a2a5a; margin-bottom: 4px; }
+.dash-cd { font-size: 1.3rem; font-weight: bold; color: #3a4a8a; font-family: "Courier New", monospace; letter-spacing: 2px; margin-bottom: 5px; }
+.dash-stir.on { font-size: 0.68rem; color: #1a5a1a; }
+.dash-stir.off { font-size: 0.68rem; color: #2a2a4a; }
+.dash-idle { font-size: 0.7rem; color: #1a1a3a; }
+.dash-hint { font-size: 0.68rem; color: #16163a; letter-spacing: 0.18em; text-transform: uppercase; margin-bottom: 10px; }
+#shutdownPowerBtn { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #1a1a4a; background: none; color: #1a1a4a; cursor: pointer; display: flex; align-items: center; justify-content: center; }
 
 /* ── Main ── */
 .main { flex: 1; padding: 16px 14px 14px; }
@@ -271,11 +282,13 @@ tr.ramp-row:hover td { background: #1a1a38; }
   </div>
 </div>
 
-<!-- Shutdown overlay -->
+<!-- Shutdown overlay / Dashboard -->
 <div id="shutdownOverlay" onclick="togglePower()">
+  <div id="shutdownDate"></div>
   <div id="shutdownClock">--:--:--</div>
-  <div id="shutdownLabel">Tap to wake</div>
-  <button id="shutdownPowerBtn">
+  <div id="rigDash"></div>
+  <div class="dash-hint">Tap anywhere to wake</div>
+  <button id="shutdownPowerBtn" onclick="event.stopPropagation();togglePower()">
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M12 2v6M5.6 5.6A9 9 0 1018.4 5.6"/>
     </svg>
@@ -445,25 +458,90 @@ function startNextInSequence(finishedRowId){
 
 /* ── Power toggle (shutdown / wake) ── */
 let isShutdown = false;
-setInterval(() => {
-  const el = document.getElementById('shutdownClock');
-  if (!el) return;
-  const d = new Date(realUtcMs());
-  el.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-}, 1000);
+const DAYS   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-function togglePower() {
-  isShutdown = !isShutdown;
-  const overlay = document.getElementById('shutdownOverlay');
-  const btn     = document.getElementById('powerBtn');
-  if (isShutdown) {
+function updateDashboard(){
+  const now = realUtcMs();
+  const d   = new Date(now);
+  const dateEl  = document.getElementById('shutdownDate');
+  const clockEl = document.getElementById('shutdownClock');
+  if(dateEl)  dateEl.textContent  = DAYS[d.getDay()]+', '+d.getDate()+' '+MONTHS[d.getMonth()]+' '+d.getFullYear();
+  if(clockEl) clockEl.textContent = pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+
+  const dashEl = document.getElementById('rigDash');
+  if(!dashEl) return;
+  dashEl.innerHTML = '';
+
+  sheetsData.forEach(sheet=>{
+    let activeRow=null, remaining=0;
+    for(const row of sheet.rows){
+      let tMs = row.targetMs;
+      if(!tMs && row.startDateStr && row.durationStr){
+        const dms=parseDuration(row.durationStr);
+        if(!isNaN(dms)&&dms>0) tMs=localStrToTargetMs(row.startDateStr,dms);
+      }
+      if(tMs && tMs>now){ activeRow=row; remaining=tMs-now; break; }
+    }
+
+    const card=document.createElement('div');
+    card.className='dash-card'+(activeRow?' active-card':'');
+
+    const rigDiv=document.createElement('div');
+    rigDiv.className='dash-rig';
+    rigDiv.textContent=sheet.name||'RIG';
+    card.appendChild(rigDiv);
+
+    if(activeRow){
+      const idx=sheet.rows.indexOf(activeRow)+1;
+      const lbl=activeRow.type==='ramp'?'Ramp '+idx:'Row '+idx;
+      const rowDiv=document.createElement('div');
+      rowDiv.className='dash-row-lbl';rowDiv.textContent=lbl;card.appendChild(rowDiv);
+      const ts=Math.floor(remaining/1000);
+      const h=Math.floor(ts/3600),m=Math.floor((ts%3600)/60),s=ts%60;
+      const cdDiv=document.createElement('div');
+      cdDiv.className='dash-cd';cdDiv.textContent=pad(h)+':'+pad(m)+':'+pad(s);card.appendChild(cdDiv);
+      const stirDiv=document.createElement('div');
+      stirDiv.className='dash-stir '+(activeRow.stirrer?'on':'off');
+      stirDiv.textContent='Stirrer '+(activeRow.stirrer?'ON':'OFF');card.appendChild(stirDiv);
+    }else{
+      const idle=document.createElement('div');idle.className='dash-idle';idle.textContent='Idle';card.appendChild(idle);
+    }
+    dashEl.appendChild(card);
+  });
+}
+
+setInterval(()=>{
+  // Main app clocks
+  const utcMs=realUtcMs(),utcD=new Date(utcMs);
+  const utcEl=document.getElementById('utcClock');
+  if(utcEl) utcEl.textContent=pad(utcD.getUTCHours())+':'+pad(utcD.getUTCMinutes())+':'+pad(utcD.getUTCSeconds());
+  const localEl=document.getElementById('localClock'),dateEl2=document.getElementById('localDate');
+  if(manualTzOffset!==null){
+    const d=new Date(utcMs+manualTzOffset*3600000);
+    if(localEl) localEl.textContent=pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
+    if(dateEl2)  dateEl2.textContent=d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate());
+  }else{
+    const d=new Date(utcMs);
+    if(localEl) localEl.textContent=pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+    if(dateEl2)  dateEl2.textContent=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+  }
+  // Dashboard
+  if(isShutdown) updateDashboard();
+},1000);
+
+function togglePower(){
+  isShutdown=!isShutdown;
+  const overlay=document.getElementById('shutdownOverlay');
+  const btn=document.getElementById('powerBtn');
+  if(isShutdown){
+    updateDashboard(); // immediate update
     overlay.classList.add('active');
     btn.classList.add('off');
-    document.body.style.background = '#03030a';
-  } else {
+    document.body.style.background='';
+  }else{
     overlay.classList.remove('active');
     btn.classList.remove('off');
-    document.body.style.background = '';
   }
 }
 let audioCtx=null;
@@ -685,21 +763,6 @@ function localStrToTargetMs(dtStr,durationMs){
 }
 
 /* ── Clock ── */
-setInterval(()=>{
-  const u=realUtcMs(),ud=new Date(u);
-  const uel=document.getElementById('utcClock');
-  if(uel)uel.textContent=pad(ud.getUTCHours())+':'+pad(ud.getUTCMinutes())+':'+pad(ud.getUTCSeconds());
-  const le=document.getElementById('localClock'),de=document.getElementById('localDate');
-  if(manualTzOffset!==null){
-    const d=new Date(u+manualTzOffset*3600000);
-    if(le)le.textContent=pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());
-    if(de)de.textContent=d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate());
-  }else{
-    const d=new Date(u);
-    if(le)le.textContent=pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
-    if(de)de.textContent=d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
-  }
-},1000);
 
 async function syncTime(){
   try{
@@ -885,6 +948,9 @@ function renderTable(){
   renderRefRow(sheet);
   sheet.rows.forEach(row=>row.type==='ramp'?renderRampRow(row):renderDataRow(row));
   updateInsertPos();
+  recalcAllBath(); // ensure bath values show after all DOM elements exist
+  recalcAllBath(); // ensures ramp bath labels populate on load
+  recalcAllBath(); // re-run after all DOM elements exist (fixes ramp bath on load)
 }
 
 function renderRefRow(sheet){
