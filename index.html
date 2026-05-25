@@ -112,6 +112,11 @@ tr.ramp-row.stirrer-on:hover td { background: #14202e !important; }
 .chat-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #24384f; background: #111d2a; }
 .chat-title { color: #7dd3fc; font-weight: bold; font-size: 0.95rem; }
 .chat-status { color: #6b7280; font-size: 0.72rem; margin-top: 2px; }
+.chat-api-row { display: flex; align-items: center; gap: 7px; margin-top: 5px; color: #6b7280; font-size: 0.72rem; }
+.chat-api-light { width: 9px; height: 9px; border-radius: 50%; background: #4b5563; box-shadow: 0 0 0 2px rgba(75,85,99,0.2); flex-shrink: 0; }
+.chat-api-light.checking { background: #f5a623; box-shadow: 0 0 10px rgba(245,166,35,0.65); }
+.chat-api-light.online { background: #5dd865; box-shadow: 0 0 10px rgba(93,216,101,0.7); }
+.chat-api-light.offline { background: #f87171; box-shadow: 0 0 10px rgba(248,113,113,0.7); }
 .chat-close { background: none; border: none; color: #6b7280; cursor: pointer; font-size: 1.2rem; padding: 4px 8px; }
 .chat-close:hover { color: #dde1f0; }
 #chatMessages { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
@@ -378,6 +383,10 @@ tr.ramp-row:hover td { background: #1a1a38; }
       <div>
         <div class="chat-title">Lab Assistant</div>
         <div class="chat-status" id="chatStatus">Uses this rig sheet for context</div>
+        <div class="chat-api-row" title="Cloud API connection status">
+          <span class="chat-api-light" id="chatApiLight"></span>
+          <span id="chatApiLabel">API not checked</span>
+        </div>
       </div>
       <button class="chat-close" onclick="closeChat()" aria-label="Close assistant">x</button>
     </div>
@@ -743,9 +752,11 @@ function loadFromStorage(){
 /* Lab assistant */
 let chatBooted=false;
 let chatBusy=false;
+let chatApiState='unknown';
 
 function openChat(){
   document.getElementById('chatOverlay').classList.add('open');
+  setChatApiStatus(chatApiState);
   if(!chatBooted){
     chatBooted=true;
     addChatMessage('assistant','Ask me about the current rig sheet. I can summarise rows, find the next finish, and check for missing values. If the cloud assistant is deployed I will use it; otherwise I will answer locally.');
@@ -756,6 +767,20 @@ function closeChat(){document.getElementById('chatOverlay').classList.remove('op
 function chatOverlayClick(e){if(e.target===document.getElementById('chatOverlay'))closeChat();}
 function chatInputKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}}
 function askQuickChat(q){openChat();document.getElementById('chatInput').value=q;sendChat();}
+
+function setChatApiStatus(state,label){
+  chatApiState=state||'unknown';
+  const light=document.getElementById('chatApiLight');
+  const text=document.getElementById('chatApiLabel');
+  if(light)light.className='chat-api-light '+(chatApiState==='unknown'?'':chatApiState);
+  const labels={
+    unknown:'API not checked',
+    checking:'Checking API...',
+    online:'API connected',
+    offline:'API offline - local mode'
+  };
+  if(text)text.textContent=label||labels[chatApiState]||labels.unknown;
+}
 
 function addChatMessage(role,text,isErr){
   const box=document.getElementById('chatMessages');
